@@ -22,6 +22,8 @@ An advanced circle analytic solution       # Elevator pitch -- what problem is b
 # YAGNI,RN:  You ain't gonna need it, right now.
 # "Code is your enemy"
 # Dogfooding
+# "self" doesn't mean you.  It means "you or one of your children"
+# D.R.Y.  Do not repeat yourself.
 
 # Dunder methods:
 #   print s                  ->   s.__str__()
@@ -42,7 +44,7 @@ Version = namedtuple('Version', ['major', 'minor', 'micro'])   # Create a tuple 
 class Circle(object):
     'An advanced circle analytics toolkit for support circle analysis'
 
-    version = Version(0, 1, 1)          # Class variables store data that is SHARED by all instances and the class itself
+    version = Version(0, 2, 1)          # Class variables store data that is SHARED by all instances and the class itself
 
     def __init__(self, radius):
         self.radius = radius            # Instance variables store data that is UNIQUE to each instance
@@ -51,15 +53,19 @@ class Circle(object):
         'Perform quadrature on a planar shape of uniform revolution'
         return math.pi * self.radius ** 2.0
 
+    def perimeter(self):
+        'Compute the perimater'
+        return 2.0 * math.pi * self.radius 
+
+    def __repr__(self):
+        return '%s(%r)' % (self.__class__.__name__, self.radius)
 
 
+    def angle_to_grade(angle):  # Use case is attaching regular functions to classes
+        'Convert an inclinometer reading in degrees to a percent grade'
+        return math.tan(math.radians(angle)) * 100.00
 
-
-
-
-
-
-
+    angle_to_grade = staticmethod(angle_to_grade)   # Reprogram the dot to not add "self" as a first argument
 
 
 
