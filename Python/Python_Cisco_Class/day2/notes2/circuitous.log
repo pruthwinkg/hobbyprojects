@@ -1,0 +1,636 @@
+changeset:   8:d9af53fe5127
+tag:         tip
+user:        Raymond Hettinger <python@rcn.com>
+date:        Wed Sep 28 12:48:52 2016 -0700
+summary:     Make the code beautiful by using the @ notation for property, staticmethod and classmethod
+
+diff --git a/circuitous.py b/circuitous.py
+--- a/circuitous.py
++++ b/circuitous.py
+@@ -47,7 +47,7 @@
+ 
+     __slots__ = ['diameter']            # Implements the Flyweight design pattern by suppressing the instance dictionaries in favor of fixed slots
+ 
+-    version = Version(0, 8, 1)          # Class variables store data that is SHARED by all instances and the class itself
++    version = Version(0, 9, 1)          # Class variables store data that is SHARED by all instances and the class itself
+ 
+     def __init__(self, radius):
+         self.radius = radius            # Instance variables store data that is UNIQUE to each instance
+@@ -66,27 +66,25 @@
+     def __repr__(self):
+         return '%s(%r)' % (self.__class__.__name__, self.radius)
+ 
++    @staticmethod                                    # Reprograms the dot to not add "self" as the first argument
+     def angle_to_grade(angle):                       # Use case is attaching regular functions to classes to improve findability
+         'Convert an inclinometer reading in degrees to a percent grade'
+         return math.tan(math.radians(angle)) * 100.0
+ 
+-    angle_to_grade = staticmethod(angle_to_grade)    # Reprograms the dot to not add "self" as the first argument
+-
++    @classmethod                                     # Reprograms the dot to add "cls" as the first argument
+     def from_bbd(cls, bbd):                          # Use case is making an alternative constructor to resolve constructor wars
+         'Create a new circle instance from a bounding box diagonal'
+         radius = bbd / 2.0 / math.sqrt(2.0)
+         return cls(radius)
+ 
+-    from_bbd = classmethod(from_bbd)                 # Reprograms the dot to add "cls" as the first argument
+-
+-    def get_radius(self):
++    @property                                        # Reprograms the dot to convert attribute access like a.x into method access like a.m()
++    def radius(self):
+         return self.diameter / 2.0
+ 
+-    def set_radius(self, radius):
++    @radius.setter
++    def radius(self, radius):
+         self.diameter = radius * 2.0
+ 
+-    radius = property(get_radius, set_radius)        # Reprograms the dot to convert attribute access like a.x into method access like a.m()
+-
+ 
+ 
+ 
+@@ -95,3 +93,4 @@
+ 
+ 
+ 
++
+diff --git a/client_code.py b/client_code.py
+--- a/client_code.py
++++ b/client_code.py
+@@ -50,6 +50,8 @@
+ class Tire(Circle):
+     'Circular tires with a perimeter corrected for the rubber on the tire'
+ 
++    __slots__ = []
++
+     RUBBER_RATIO = 1.25
+ 
+     def perimeter(self):
+@@ -60,6 +62,8 @@
+ 
+ class MonsterTire(Tire):
+ 
++    __slots__ = []
++
+     RUBBER_RATIO = 1.50
+ 
+ t = Tire(30)
+
+changeset:   7:78d448e1fd7a
+user:        Raymond Hettinger <python@rcn.com>
+date:        Tue Sep 27 14:38:32 2016 -0700
+summary:     Implement the flyweight design pattern using __slots__ to save memory for the academic users
+
+diff --git a/circuitous.py b/circuitous.py
+--- a/circuitous.py
++++ b/circuitous.py
+@@ -45,7 +45,9 @@
+ class Circle(object):
+     'An advanced circle analytics toolkit for support circle analysis'
+ 
+-    version = Version(0, 7, 1)          # Class variables store data that is SHARED by all instances and the class itself
++    __slots__ = ['diameter']            # Implements the Flyweight design pattern by suppressing the instance dictionaries in favor of fixed slots
++
++    version = Version(0, 8, 1)          # Class variables store data that is SHARED by all instances and the class itself
+ 
+     def __init__(self, radius):
+         self.radius = radius            # Instance variables store data that is UNIQUE to each instance
+diff --git a/client_code.py b/client_code.py
+--- a/client_code.py
++++ b/client_code.py
+@@ -15,7 +15,7 @@
+ from random import seed, random
+ from pprint import pprint
+ 
+-n = 10
++n = 100000
+ jenny = 8675309
+ print 'DARPA Grant Proposal'
+ print 'to study the average area of random circles'
+@@ -26,7 +26,7 @@
+ circles = [Circle(random()) for i in xrange(n)]
+ areas = [circle.area() for circle in circles]
+ average_area = sum(areas) / n
+-print 'The average area is %.1f' % average_area
++print 'The average area is %.5f' % average_area
+ print
+ 
+ ## Rubber Sheet Company ################################################
+@@ -97,8 +97,3 @@
+ # ISO 10667: No circle software shall store the radius in an instance.
+ # It MUST store the diameter and ONLY the diameter.
+ 
+-
+-
+-
+-
+-
+
+changeset:   6:6158607f0ca5
+user:        Raymond Hettinger <python@rcn.com>
+date:        Tue Sep 27 14:23:59 2016 -0700
+summary:     Add a radius property to comply with ISO 10667.
+
+diff --git a/circuitous.py b/circuitous.py
+--- a/circuitous.py
++++ b/circuitous.py
+@@ -45,7 +45,7 @@
+ class Circle(object):
+     'An advanced circle analytics toolkit for support circle analysis'
+ 
+-    version = Version(0, 6, 1)          # Class variables store data that is SHARED by all instances and the class itself
++    version = Version(0, 7, 1)          # Class variables store data that is SHARED by all instances and the class itself
+ 
+     def __init__(self, radius):
+         self.radius = radius            # Instance variables store data that is UNIQUE to each instance
+@@ -77,6 +77,13 @@
+ 
+     from_bbd = classmethod(from_bbd)                 # Reprograms the dot to add "cls" as the first argument
+ 
++    def get_radius(self):
++        return self.diameter / 2.0
++
++    def set_radius(self, radius):
++        self.diameter = radius * 2.0
++
++    radius = property(get_radius, set_radius)        # Reprograms the dot to convert attribute access like a.x into method access like a.m()
+ 
+ 
+ 
+@@ -86,7 +93,3 @@
+ 
+ 
+ 
+-
+-
+-
+-
+diff --git a/client_code.py b/client_code.py
+--- a/client_code.py
++++ b/client_code.py
+@@ -94,8 +94,11 @@
+ # ISO 10666: No circle software shall compute an area directly from
+ # instance data.  It MUST first call perimeter and infer the data indirectly.
+ 
++# ISO 10667: No circle software shall store the radius in an instance.
++# It MUST store the diameter and ONLY the diameter.
+ 
+ 
+ 
+ 
+ 
++
+
+changeset:   5:b4b148600aed
+user:        Raymond Hettinger <python@rcn.com>
+date:        Tue Sep 27 12:33:20 2016 -0700
+summary:     Add class local reference using name mangling for perimeter() to comply with ISO10666
+
+diff --git a/circuitous.py b/circuitous.py
+--- a/circuitous.py
++++ b/circuitous.py
+@@ -24,6 +24,7 @@
+ # Dogfooding
+ # "self" doesn't mean you.  It means "you or one of your children"
+ # D.R.Y.  Do not repeat yourself.
++# Micromanage:  Telling someone HOW to do their job instead of WHAT to do.
+ 
+ # Dunder methods:
+ #   print s                  ->   s.__str__()
+@@ -44,19 +45,22 @@
+ class Circle(object):
+     'An advanced circle analytics toolkit for support circle analysis'
+ 
+-    version = Version(0, 5, 1)          # Class variables store data that is SHARED by all instances and the class itself
++    version = Version(0, 6, 1)          # Class variables store data that is SHARED by all instances and the class itself
+ 
+     def __init__(self, radius):
+         self.radius = radius            # Instance variables store data that is UNIQUE to each instance
+ 
+     def area(self):
+         'Perform quadrature on a planar shape of uniform revolution'
+-        return math.pi * self.radius ** 2.0
++        radius = self.__perimeter() / math.pi / 2.0  # Class local references when you need "self" to really be you.
++        return math.pi * radius ** 2.0
+ 
+     def perimeter(self):
+         'Compute a closed line integral for the 2-D locus of points equidistant from a given point'
+         return 2.0 * math.pi * self.radius
+ 
++    __perimeter = perimeter                          # Name mangling automatically prepends the name of the class to prevent name conflicts with subclasses
++
+     def __repr__(self):
+         return '%s(%r)' % (self.__class__.__name__, self.radius)
+ 
+diff --git a/client_code.py b/client_code.py
+--- a/client_code.py
++++ b/client_code.py
+@@ -53,11 +53,11 @@
+     RUBBER_RATIO = 1.25
+ 
+     def perimeter(self):
+-        print 'The perimeter in Tire was called with', self
+-        print "That instance's RUBBER RATIO is", self.RUBBER_RATIO
+         return Circle.perimeter(self) * self.RUBBER_RATIO       # Extending
+         return 2.0 * 3.14 * self.radius * self.RUBBER_RATIO     # Overriding
+ 
++    __perimeter = perimeter
++
+ class MonsterTire(Tire):
+ 
+     RUBBER_RATIO = 1.50
+@@ -89,6 +89,10 @@
+ print 'and an area of', c.area()
+ print
+ 
++## US Gov't ###############################################################
++
++# ISO 10666: No circle software shall compute an area directly from
++# instance data.  It MUST first call perimeter and infer the data indirectly.
+ 
+ 
+ 
+
+changeset:   4:93b24863a305
+user:        Raymond Hettinger <python@rcn.com>
+date:        Tue Sep 27 11:53:00 2016 -0700
+summary:     Add from_bbd classmethod for the graphics company
+
+diff --git a/circuitous.py b/circuitous.py
+--- a/circuitous.py
++++ b/circuitous.py
+@@ -44,7 +44,7 @@
+ class Circle(object):
+     'An advanced circle analytics toolkit for support circle analysis'
+ 
+-    version = Version(0, 4, 1)          # Class variables store data that is SHARED by all instances and the class itself
++    version = Version(0, 5, 1)          # Class variables store data that is SHARED by all instances and the class itself
+ 
+     def __init__(self, radius):
+         self.radius = radius            # Instance variables store data that is UNIQUE to each instance
+@@ -66,6 +66,12 @@
+ 
+     angle_to_grade = staticmethod(angle_to_grade)    # Reprograms the dot to not add "self" as the first argument
+ 
++    def from_bbd(cls, bbd):                          # Use case is making an alternative constructor to resolve constructor wars
++        'Create a new circle instance from a bounding box diagonal'
++        radius = bbd / 2.0 / math.sqrt(2.0)
++        return cls(radius)
++
++    from_bbd = classmethod(from_bbd)                 # Reprograms the dot to add "cls" as the first argument
+ 
+ 
+ 
+@@ -77,3 +83,6 @@
+ 
+ 
+ 
++
++
++
+diff --git a/client_code.py b/client_code.py
+--- a/client_code.py
++++ b/client_code.py
+@@ -80,6 +80,14 @@
+ print 'is a %.1f%% grade.' % Circle.angle_to_grade(5)
+ print
+ 
++## National Graphics Company ##############################################
++
++c = Circle.from_bbd(25)
++print 'A circle with a bounding box diagonal of 25'
++print 'has a radius of', c.radius
++print 'a perimeter of', c.perimeter()
++print 'and an area of', c.area()
++print
+ 
+ 
+ 
+@@ -87,4 +95,3 @@
+ 
+ 
+ 
+-
+
+changeset:   3:5ad6fa168a63
+user:        Raymond Hettinger <python@rcn.com>
+date:        Tue Sep 27 10:40:18 2016 -0700
+summary:     Support Tire subclassing __repr__ and add staticmethod angle to grade
+
+diff --git a/circuitous.py b/circuitous.py
+--- a/circuitous.py
++++ b/circuitous.py
+@@ -22,6 +22,8 @@
+ # YAGNI,RN:  You ain't gonna need it, right now.
+ # "Code is your enemy"
+ # Dogfooding
++# "self" doesn't mean you.  It means "you or one of your children"
++# D.R.Y.  Do not repeat yourself.
+ 
+ # Dunder methods:
+ #   print s                  ->   s.__str__()
+@@ -42,7 +44,7 @@
+ class Circle(object):
+     'An advanced circle analytics toolkit for support circle analysis'
+ 
+-    version = Version(0, 3, 1)          # Class variables store data that is SHARED by all instances and the class itself
++    version = Version(0, 4, 1)          # Class variables store data that is SHARED by all instances and the class itself
+ 
+     def __init__(self, radius):
+         self.radius = radius            # Instance variables store data that is UNIQUE to each instance
+@@ -56,7 +58,13 @@
+         return 2.0 * math.pi * self.radius
+ 
+     def __repr__(self):
+-        return 'Circle(%r)' % self.radius
++        return '%s(%r)' % (self.__class__.__name__, self.radius)
++
++    def angle_to_grade(angle):                       # Use case is attaching regular functions to classes to improve findability
++        'Convert an inclinometer reading in degrees to a percent grade'
++        return math.tan(math.radians(angle)) * 100.0
++
++    angle_to_grade = staticmethod(angle_to_grade)    # Reprograms the dot to not add "self" as the first argument
+ 
+ 
+ 
+@@ -69,8 +77,3 @@
+ 
+ 
+ 
+-
+-
+-
+-
+-
+diff --git a/client_code.py b/client_code.py
+--- a/client_code.py
++++ b/client_code.py
+@@ -41,5 +41,50 @@
+     print 'has a perimeter of', circle.perimeter()
+     print 'has a cold area of', circle.area()
+     circle.radius *= 1.1
++    # circle.set_radius(circle.get_radius() * 1.1)
+     print 'and a warm area of', circle.area()
+     print
++
++## National Tire Chain ################################################
++
++class Tire(Circle):
++    'Circular tires with a perimeter corrected for the rubber on the tire'
++
++    RUBBER_RATIO = 1.25
++
++    def perimeter(self):
++        print 'The perimeter in Tire was called with', self
++        print "That instance's RUBBER RATIO is", self.RUBBER_RATIO
++        return Circle.perimeter(self) * self.RUBBER_RATIO       # Extending
++        return 2.0 * 3.14 * self.radius * self.RUBBER_RATIO     # Overriding
++
++class MonsterTire(Tire):
++
++    RUBBER_RATIO = 1.50
++
++t = Tire(30)
++print 'A tire with an inner radius of', t.radius
++print 'has an inner area of', t.area()
++print 'and an outer perimeter of', t.perimeter()
++print
++
++m = MonsterTire(30)
++print 'A monster tire with an inner radius of', m.radius
++print 'has an inner area of', m.area()
++print 'and an outer perimeter of', m.perimeter()
++print
++
++## National Trucking Company ##############################################
++
++print u'An inclinometer reading of 5\N{degree sign}',
++print 'is a %.1f%% grade.' % Circle.angle_to_grade(5)
++print
++
++
++
++
++
++
++
++
++
+
+changeset:   2:1a89256d3503
+user:        Raymond Hettinger <python@rcn.com>
+date:        Mon Sep 26 17:22:10 2016 -0700
+summary:     Add a perimeter() to support rubber sheet company
+
+diff --git a/circuitous.py b/circuitous.py
+--- a/circuitous.py
++++ b/circuitous.py
+@@ -42,7 +42,7 @@
+ class Circle(object):
+     'An advanced circle analytics toolkit for support circle analysis'
+ 
+-    version = Version(0, 2, 1)          # Class variables store data that is SHARED by all instances and the class itself
++    version = Version(0, 3, 1)          # Class variables store data that is SHARED by all instances and the class itself
+ 
+     def __init__(self, radius):
+         self.radius = radius            # Instance variables store data that is UNIQUE to each instance
+@@ -51,6 +51,10 @@
+         'Perform quadrature on a planar shape of uniform revolution'
+         return math.pi * self.radius ** 2.0
+ 
++    def perimeter(self):
++        'Compute a closed line integral for the 2-D locus of points equidistant from a given point'
++        return 2.0 * math.pi * self.radius
++
+     def __repr__(self):
+         return 'Circle(%r)' % self.radius
+ 
+diff --git a/client_code.py b/client_code.py
+--- a/client_code.py
++++ b/client_code.py
+@@ -29,4 +29,17 @@
+ print 'The average area is %.1f' % average_area
+ print
+ 
++## Rubber Sheet Company ################################################
+ 
++cut_template = [0.1, 0.2, 0.7]
++print 'Spec sheet for the template:', cut_template
++circles = map(Circle, cut_template)
++
++for i, circle in enumerate(circles, start=1):
++    print 'Circle #%d' % i
++    print 'A circle with a cut radius of', circle.radius
++    print 'has a perimeter of', circle.perimeter()
++    print 'has a cold area of', circle.area()
++    circle.radius *= 1.1
++    print 'and a warm area of', circle.area()
++    print
+
+changeset:   1:eb8175493fa9
+user:        Raymond Hettinger <python@rcn.com>
+date:        Mon Sep 26 17:04:54 2016 -0700
+summary:     Add an informative repr.  Feedback from academics on the MVP.
+
+diff --git a/circuitous.py b/circuitous.py
+--- a/circuitous.py
++++ b/circuitous.py
+@@ -42,7 +42,7 @@
+ class Circle(object):
+     'An advanced circle analytics toolkit for support circle analysis'
+ 
+-    version = Version(0, 1, 1)          # Class variables store data that is SHARED by all instances and the class itself
++    version = Version(0, 2, 1)          # Class variables store data that is SHARED by all instances and the class itself
+ 
+     def __init__(self, radius):
+         self.radius = radius            # Instance variables store data that is UNIQUE to each instance
+@@ -51,6 +51,9 @@
+         'Perform quadrature on a planar shape of uniform revolution'
+         return math.pi * self.radius ** 2.0
+ 
++    def __repr__(self):
++        return 'Circle(%r)' % self.radius
++
+ 
+ 
+ 
+@@ -67,5 +70,3 @@
+ 
+ 
+ 
+-
+-
+diff --git a/client_code.py b/client_code.py
+--- a/client_code.py
++++ b/client_code.py
+@@ -1,5 +1,6 @@
+ "Show-off the ciruitous code from the user's point of view"
+ 
++from __future__ import division
+ from circuitous import Circle
+ 
+ print u'Tutorial for Circuitous\N{trade mark sign}'
+@@ -8,3 +9,24 @@
+ print 'A circle with a radius of', c.radius
+ print 'has an area of', c.area()
+ print
++
++## Academic Friends ######################################
++
++from random import seed, random
++from pprint import pprint
++
++n = 10
++jenny = 8675309
++print 'DARPA Grant Proposal'
++print 'to study the average area of random circles'
++print 'using Circuitous(tm) version %d.%d' % Circle.version[:2]
++print 'preliminary study using %d random circles' % n
++print "seeded using Jenny's number: %d" % jenny
++seed(jenny)
++circles = [Circle(random()) for i in xrange(n)]
++areas = [circle.area() for circle in circles]
++average_area = sum(areas) / n
++print 'The average area is %.1f' % average_area
++print
++
++
+
+changeset:   0:ddedda0daab6
+user:        Raymond Hettinger <python@rcn.com>
+date:        Mon Sep 26 16:00:00 2016 -0700
+summary:     Ship MVP with Circle class, area method, and tutorial
+
+diff --git a/circuitous.py b/circuitous.py
+new file mode 100644
+--- /dev/null
++++ b/circuitous.py
+@@ -0,0 +1,71 @@
++''' Circuitous(tm)                         # Give the project a name
++An advanced circle analytic solution       # Elevator pitch -- what problem is being solved and how
++'''
++
++# Waterfall:  Requirements -> Design -> Coding -> Testing -> Documentation
++# Agile:      Do a little req->des->cod->test->doc and repeat frequently <-- learning process
++# Lean startup:  Create an MVP, ship it, get feedback, and alter course accordingly
++# Generalization / Specialization is a poor model for object oriented programming because of penguins, dophins, and bats
++# Inheritance: This is a tool whose sole purpose is code reuse.
++# In new-style classes, we inherit from object() which gives us a new __getattribute__
++# New-style classes have a much more interesting and powerful dot operator than old-style classes
++# We typically don't put docstrings on dunder methods because
++# 1) user's rarely see them and 2) the meaning of the dunder methods is well-known
++# When copying from one namespace to another we usually keep the variable name the same
++# the main exception is when the target namespace has its own jargon or ontology.
++# With magic constants, we factor them out to give them a name for improved intelligiblity
++# and express "a single source of truth"
++# The purpose of modules is to 1) organize code and 2) to support code reuse,
++# and 3) provide a single source of truth across an application.
++# MVP:  Minimum viable product
++# When creating an MVP, aim for the customer's biggest headache or for the crux of the problem
++# YAGNI,RN:  You ain't gonna need it, right now.
++# "Code is your enemy"
++# Dogfooding
++
++# Dunder methods:
++#   print s                  ->   s.__str__()
++#   >>> s                    ->   s.__repr__()
++#   s[0]                     ->   s.__getitem__(0)
++#   len(s)                   ->   s.__len__()
++#   for c in s:              ->   s.__iter__() until StopIteration
++#                            ->   s.__getitem__(0)  until IndexError
++#   s(a, b)                  ->   s.__call__(a, b)
++#   s.m                      ->   s.__getattribute__('m')
++#   s + t                    ->   s.__add__(t)
++
++import math
++from collections import namedtuple
++
++Version = namedtuple('Version', ['major', 'minor', 'micro'])   # Create a tuple with named fields
++
++class Circle(object):
++    'An advanced circle analytics toolkit for support circle analysis'
++
++    version = Version(0, 1, 1)          # Class variables store data that is SHARED by all instances and the class itself
++
++    def __init__(self, radius):
++        self.radius = radius            # Instance variables store data that is UNIQUE to each instance
++
++    def area(self):
++        'Perform quadrature on a planar shape of uniform revolution'
++        return math.pi * self.radius ** 2.0
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
+diff --git a/client_code.py b/client_code.py
+new file mode 100644
+--- /dev/null
++++ b/client_code.py
+@@ -0,0 +1,10 @@
++"Show-off the ciruitous code from the user's point of view"
++
++from circuitous import Circle
++
++print u'Tutorial for Circuitous\N{trade mark sign}'
++print 'Circle version %d.%d' % Circle.version[:2]
++c = Circle(10)
++print 'A circle with a radius of', c.radius
++print 'has an area of', c.area()
++print
+

@@ -1,0 +1,30 @@
+       ''' World Famous Fibonacci function
+       
+               Fibo definition:
+                      0 -> 0
+                      1 -> 1
+                      n -> F(n-1) + F(n-2),    where n >= 1
+       
+               How to trace:
+       
+                       $ python -m trace --count fibo.py
+                       55
+               
+    1: '''
+       
+    1: from decorator_school import cache
+       
+    1: def fibo(n):
+    1:     a, b = 0, 1
+  201:     for i in xrange(n):
+  200:         a, b = b, a+b
+    1:     return a
+       
+    1: @cache
+       def fibo1(n):
+           if n == 0: return 0
+           if n == 1: return 1
+           return fibo(n-1) + fibo(n-2)
+           
+       
+    1: print fibo(200)

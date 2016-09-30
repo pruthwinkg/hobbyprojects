@@ -44,34 +44,48 @@ Version = namedtuple('Version', ['major', 'minor', 'micro'])   # Create a tuple 
 class Circle(object):
     'An advanced circle analytics toolkit for support circle analysis'
 
-    version = Version(0, 2, 1)          # Class variables store data that is SHARED by all instances and the class itself
+    __slots__ = ['diameter']   # Implements the Flyweight design pattern by suppressing the instance dictionaries in favor of fixed slots
+
+    version = Version(0, 8, 1)          # Class variables store data that is SHARED by all instances and the class itself
 
     def __init__(self, radius):
         self.radius = radius            # Instance variables store data that is UNIQUE to each instance
 
     def area(self):
         'Perform quadrature on a planar shape of uniform revolution'
-        return math.pi * self.radius ** 2.0
+        radius = self.__perimeter() / math.pi / 2.0 # Class local references when you need "self" to really be you.
+        return math.pi * radius ** 2.0
 
     def perimeter(self):
-        'Compute the perimater'
-        return 2.0 * math.pi * self.radius 
+        'Compute a closed line integral for the 2-D locus of points equidistant from a given point'
+        return 2.0 * math.pi * self.radius
+
+    __perimeter = perimeter # Name mangling automatically prepends the name of the class to prevent name conflicts with subclasses
 
     def __repr__(self):
         return '%s(%r)' % (self.__class__.__name__, self.radius)
 
-
-    def angle_to_grade(angle):  # Use case is attaching regular functions to classes
+    def angle_to_grade(angle):                       # Use case is attaching regular functions to classes to improve findability
         'Convert an inclinometer reading in degrees to a percent grade'
-        return math.tan(math.radians(angle)) * 100.00
+        return math.tan(math.radians(angle)) * 100.0
 
-    angle_to_grade = staticmethod(angle_to_grade)   # Reprogram the dot to not add "self" as a first argument
+    angle_to_grade = staticmethod(angle_to_grade)    # Reprograms the dot to not add "self" as the first argument
+
+    def from_bbd(cls, bbd):                               # Use case is making an alternative constructor to resolve constructor wars
+        'Create a new circle instance from a bounding box diagonal'
+        radius = bbd / 2.0 / math.sqrt(2.0)
+        return cls(radius)
+
+    from_bbd = classmethod(from_bbd)                # Reprograms the dot to add "cls" as the first argument
+
+    def get_radius(self):
+        return self.diameter / 2.0
+
+    def set_radius(self, radius):
+        self.diameter = radius * 2.0
 
 
-
-
-
-
+    radius = property(get_radius, set_radius)       # Reprograms the dot to convert attribute access like a.x into method access like a.m()
 
 
 

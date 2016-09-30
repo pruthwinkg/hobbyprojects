@@ -55,7 +55,11 @@ class Tire(Circle):
         return Circle.perimeter(self) * self.RUBBER_RATIO           # Extending
         #return 2.0 * math.pi * self.radius * self.RUBBER_RATIO      # Overriding
 
+    __perimeter = perimeter
+
 class MonsterTire(Tire):
+
+    __slots__ = []
 
     RUBBER_RATIO = 1.50
 
@@ -77,4 +81,10 @@ print
 print u'An inclinometer reading of 5\N{degree sign}',
 print 'is a %f%% grade' % Circle.angle_to_grade(5)
 print
+
+
+## US Gov't ###############################################################
+
+# ISO 10666: No circle software shall compute an area directly from
+# instance data.  It MUST first call perimeter and infer the data indirectly.
 
