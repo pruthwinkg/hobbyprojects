@@ -1,0 +1,66 @@
+<tech_support>
+    <cli>show hardware internal tah l3 trie summary table table-all</cli>
+    <cli>show hardware internal tah l3 trie detail table table-all</cli>
+    <cli>show hardware internal tah l3 ipv6 trie summary table table-all</cli>
+    <cli>show hardware internal tah l3 ipv6 trie detail table table-all</cli>
+    <cli>show hardware internal tah l3 trie nhset</cli>
+    <cli>show hardware internal tah l3 adjacency</cli>
+    <cli>show hardware internal tah l3 mtu</cli>
+    <cli>show hardware internal tah l3 multipath</cli>
+    <cli>show hardware internal tah l3 tunnel</cli>
+    <cli>show hardware internal tah l3 v4host</cli>
+    <cli>show hardware internal tah l3 v4lpm</cli>
+    <cli>show hardware internal tah l3 v6host</cli>
+    <cli>show hardware internal tah l3 v6lpm</cli>
+
+    <cli>show hardware internal tah l3 issu</cli>
+    <cli>show hardware internal tah l3 ipv4 tcam details</cli>
+    <cli>show hardware internal tah l3 ipv6 tcam details</cli>
+    <cli>show hardware internal tah l3 ipv4 trie utilization</cli>
+    <cli>show hardware internal tah l3 ipv6 trie utilization</cli>
+    <cli>show hardware internal tah l3 counter</cli>
+    <cli>show hardware internal tah sdk l3 sw-table lpm-handle</cli>
+    <cli>show hardware internal tah sdk l3 sw-table e-table</cli>
+    <cli>show hardware internal tah sdk l3 sw-table ipv4 hash-table</cli>
+    <cli>show hardware internal tah sdk l3 sw-table ipv6 hash-table</cli>
+    <cli>show hardware internal tah rmac</cli>
+    <cli>show hardware internal tah ucast v4-route-history</cli>
+    <cli>show hardware internal tah ucast v6-route-history</cli>
+    <cli>show hardware internal tah logical-tile-types</cli>
+
+    <cli>show hardware internal tah interrupts</cli>
+    <cli>show hardware internal tah mem-stats</cli>
+    <cli>show hardware internal tah mac hwlib show global_mac_status</cli>
+    <cli>show hardware internal tah mac hwlib show mac_cfg_status</cli>
+    <cli>show hardware internal tah mac hwlib show mac_bip_errors</cli>
+    <cli>show hardware internal tah mac hwlib show mac_errors</cli>
+    <cli>show hardware internal tah slice-interrupts</cli>
+    <cli>show hardware internal tah event-history error</cli>
+    <cli>show hardware internal tah event-history trace</cli>
+    <cli>show hardware internal tah event-history msgs</cli>
+    <cli>show hardware internal tah event-history asic</cli>
+    <cli>show hardware internal tah sdk-l2 entries</cli>
+    <cli>show hardware internal tah l2 age stats</cli>
+    <cli>show hardware internal tah l2 age tcam_hit_map</cli>
+    <cli>show hardware internal tah l2 learn stats</cli>
+    <cli>show hardware internal tah l2 local_bitmap</cli>
+    <cli>show hardware internal tah l2 psec_bitmap</cli>
+    <cli>show mac address-table count</cli>
+    <cli>show hardware internal tah sdk event-history error</cli>
+    <cli>show hardware internal tah sdk event-history trace</cli>
+    <cli>show hardware internal tah sdk sw_tables</cli>
+    <cli>show hardware internal tah buffer counter</cli>
+    <cli>show hardware internal tah slice</cli>
+    <cli>"debug hardware internal tah pfc-wd-queue</cli>
+    <cli>show hardware mac address-table</cli>
+
+    <cli>show forwarding internal unicast debugs</cli>
+    <cli>show forwarding internal unicast ha</cli>)
+  
+    <cli_identifiers>
+    <!-- These are used to identify an CLI (use comma as delimeter)-->
+        show, debug    
+    </cli_identifiers>
+</tech_support>
+
+
