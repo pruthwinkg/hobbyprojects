@@ -1,4 +1,6 @@
 <tech_support>
+    <appName>TechSupportParser</appName>
+
     <cli>show hardware internal tah l3 trie summary table table-all</cli>
     <cli>show hardware internal tah l3 trie detail table table-all</cli>
     <cli>show hardware internal tah l3 ipv6 trie summary table table-all</cli>
@@ -61,6 +63,16 @@
     <!-- These are used to identify an CLI (use comma as delimeter)-->
         show, debug    
     </cli_identifiers>
+
+    <logger>
+    <!-- These are used to enable/customize logging mechanism-->
+        <log_en> enable </log_en>
+        <log_lvl>         
+        <!-- log_lvl supported: [dbg_all, dbg_info, dbg_error, dbg_warn, dbg_critical] -->
+            dbg_all
+        </log_lvl>
+        <log_loc>./</log_loc>
+    </logger>
 </tech_support>
 
 
