@@ -4,6 +4,7 @@
 # Date: 06/20/2017 
 #*******************************************************************************
 
+from collections import *
 import logging
 import xml.etree.ElementTree
 
@@ -43,10 +44,15 @@ class ConfFileManager(object):
                           'dbg_error': logging.ERROR, 
                           'dbg_critical': logging.CRITICAL}
         self.initLogger()
+        cliConfig = namedtuple('cliConfig', 'name hdr_len')
+        self.cliConfig = cliConfig
+
+        self.getOutputConfig()
+        self.initOutput()
 
     def initLogger(self):
         # Logger support    
-        self.logger = logging.getLogger(self.appName)
+        self.logger = logging.getLogger(self.appName + 'logger')
         hdlr = logging.FileHandler(self.logger_loc + self.appName + '.log', 'w')
         formatter = logging.Formatter('%(asctime)s %(levelname)s %(funcName)s [%(lineno)d]: %(message)s')
         hdlr.setFormatter(formatter)
@@ -58,19 +64,55 @@ class ConfFileManager(object):
         self.logger.info('Logger initialized successfully')
         self.logger.debug('Logger config: [en = %s, lvl = %s, loc = %s]' 
                 %(self.logger_en, self.logger_lvl, self.logger_loc))
-        
+
+    def initOutput(self):
+        '''
+         The output uses the same logger infra to dump the output to a file
+         The level is set to logging.INFO
+
+         Example: self.output.info("Message.....")
+        '''
+        self.output = logging.getLogger(self.appName + 'output')
+        if self.output_type == 'console':
+            hdlr = logging.StreamHandler()
+        else:
+            hdlr = logging.FileHandler(self.output_loc, 'w')
+        self.output.addHandler(hdlr)
+        self.output.setLevel(logging.INFO)
+        if self.output_en == 'disable':
+            self.output.setLevel(logging.CRITICAL + 1)
+                
+        self.logger.info('Output initialized successfully')
+        self.logger.info('Output config: [en = %s, type = %s, loc = %s]' 
+                %(self.output_en, self.output_type, self.output_loc))
+       
+
     def getAppName(self):
         appName = self.conf.find('appName')
         if appName is None:
             return 'tech_support'
         return appName.text
 
-    def getCliList(self):
-        cliList = []
-        for cli in self.conf.findall('cli'):
-            self.logger.debug(cli.text)
-            cliList.append(cli.text)
-        return cliList
+    def getCliConfig(self, cli=None):
+        '''
+            This function returns the cli config for the 'cli' passed.
+            Else it turns, the configs for all the clis defined in the config file.
+        '''
+        cliConfigList = []
+        
+        for _cli in self.conf.findall('cli'):
+            cliName = _cli.get('name')
+            cliHdrLen = _cli.find('header_len').text
+            cliConfigList.append(self.cliConfig(name=cliName, hdr_len=cliHdrLen))
+            self.logger.debug("Name: " + cliName + " hdr: " + str(cliHdrLen))
+
+        if cli == None:
+            return cliConfigList
+        else:
+            for index, _cli in enumerate(cliConfigList):
+                if cli == _cli.name:
+                    return cliConfigList[index]
+            return None                   
             
     def getCliIdentifiers(self):
         cliIdentifiers = []
@@ -93,7 +135,21 @@ class ConfFileManager(object):
         else:
             self.logger_loc = './' # Use same directory
 
-
+    def getOutputConfig(self):
+        self.outputRoot = self.conf.find('output')
+        if self.outputRoot.find('out_en') is not None:
+            self.output_en = self.outputRoot.find('out_en').text.strip(' \t\n\r')
+        else:
+            self.output_en = 'disable'
+        if self.outputRoot.find('out_type') is not None:
+            self.output_type = self.outputRoot.find('out_type').text.strip(' \t\n\r')
+        else:
+            self.output_type = 'file' # By default use file type for the output
+        if self.outputRoot.find('out_loc') is not None:
+            self.output_loc = self.outputRoot.find('out_loc').text.strip(' \t\n\r')
+        else:
+            self.output_loc = './tech.out' # Use same directory
+           
 
 class TechSupportParser(object):
     '''
@@ -122,7 +178,8 @@ class TechSupportParser(object):
         if self.cliLineOffsets.has_key(cli):
             lineNum = self.cliLineOffsets.get(cli)
         else:
-            self.config.logger.error("Cli cannot be found in the tech support file <%s>" %(self.techFile))
+            self.config.logger.error("Cli: [%s] cannot be found in the tech support file <%s>" 
+                            %(cli, self.techFile))
             return None
 
         for line in self.readlines[lineNum+1:]:
@@ -149,14 +206,21 @@ class TechSupportParser(object):
                  clis.
         '''
         cliLineSortedList = sorted(self.cliLineOffsets.values())
+        self.config.logger.debug(cliLineSortedList)
         if stringType is None:
             for lineNum, line in enumerate(self.readlines):
                 if string in line:
                     self.config.logger.debug('%s : %d' %(line, lineNum))
-                    key = self._findSmallerNumber(cliLineSortedList, lineNum)
-                    print self.cliLineOffsets.keys()[self.cliLineOffsets.values().index(key)]
-                
-        
+                    sIdx = self._findSmallerNumber(cliLineSortedList, lineNum)
+                    _cli = self.cliLineOffsets.keys()[self.cliLineOffsets.values().index(sIdx)]
+                    eIdx = sIdx + int(self.config.getCliConfig(_cli).hdr_len)
+                    self.config.logger.debug('sIdx: %d, eIdx: %d' %(sIdx, eIdx))
+
+                    # print the cli, header and message
+                    self.config.output.info(_cli)
+                    for hdr in self.readlines[sIdx+1:eIdx+1]:
+                        self.config.output.info(hdr.strip("\n"))                
+                    self.config.output.info(line + "\n") 
 
     def readTechSupport(self, readType=READ_TECH_FULL, readAttr=None):
         print("Reading the tech support file <%s> ....." %(self.techFile))
@@ -165,10 +229,10 @@ class TechSupportParser(object):
                 self.readlines = techFp.readlines(0)
            
             # List compression with character '`' to match exactly
-            tempCliList = ['`' + x + '`' for x in self.config.getCliList()]            
+            tempCliList = ['`' + x.name + '`' for x in self.config.getCliConfig()]            
             for l, line in enumerate(self.readlines):
                 if any(c in line for c in tempCliList):
-                    key = next((s for s in self.config.getCliList() if s in line), None)
+                    key = next((s.name for s in self.config.getCliConfig() if s.name in line), None)
                     self.config.logger.debug('%s : %d' %(key, l))
                     self.cliLineOffsets[key] = l
 
@@ -190,11 +254,4 @@ class TechSupportParser(object):
                 break        
         return prevN
 
-########################################
-#   Test code
-#######################################        
-if __name__ == '__main__':        
-    techParser = TechSupportParser('pruthwin_log', 'tech_support.xml')
-    techParser.cliParser('show hardware internal tah l3 counter')
-    techParser.getDataSummary("20.0.137.27")
 
