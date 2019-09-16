@@ -1,0 +1,13 @@
+profile:
+  - profie-id : 1        # Reserved for future use to support mutiple profiles
+    user  : pkadmaje
+    email : pruthwinkg.developer@gmail.com
+
+logger:
+    app_name : maid
+    log_en : enable      # Valid values -> enable, disable
+    log_lvl : dbg_all    # Valid values -> dbg_info, dbg_info, dbg_warn, dbg_error, dbg_critical
+    log_loc : ./         # The location of log file in case log_type is set to 'file'
+    log_type : console   # Valid values -> file, console
+    
+    

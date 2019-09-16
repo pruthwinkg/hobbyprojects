@@ -1,0 +1,39 @@
+Author : 
+    Pruthwin Kadmaje Giridhara (pruthwinkg.developer@gmail.com)
+
+Description : 
+
+This project is called "maid". It basically does all the house hold chores at workplace like pulling a code, building it, running on any platform, debugging etc. It can also be customized to handle any boring jobs / do automation. The main intention is to use free up time at workplace to relax a bit :)
+
+Design :
+
+The "maid" is designed to migrate and adapt to any workplace with very minimal changes (Mostly config file).
+
+    It mainly divided into below 4 modules :
+        - Job Processor     : Accepts any kind of jobs and processes it
+        - House Keeper      : Does some of the house keeping jobs, maintain debugging information, various utilities etc.  
+        - Job Requestor     : Front end of "maid".
+        - Config file       : Configuration file to customize "maid" for any workplace. (maid.yaml)
+
+Functionalities :
+
+    Default :
+        - Email notifications
+        - "maid" shell
+        - Timers
+        - Priority based execution
+
+    Custom (Most important): 
+        Provides infra to add any new specific custom functionality.
+
+
+
+    - Jobs are executed in "Job Processor" soley based on the messages received by "Job Requestor"
+
+    Advanced feature :
+    - The maid-message consists of job-id and priority. The "Job Processor" maintains a table for various priorities and job IDs
+    - The maid maintains a maid-database to hold all jobs to be executed. The "Job Processor" gets the jobs from the maid-db based on the jobs in priority table
+    - The priority table is useful when there are a sequence of jobs to executed in some order.
+
+    Basic feature :
+    - The jobs can also be executed in "Job Processor" in a immediate manner as well. In this case the priority tables are not used.
