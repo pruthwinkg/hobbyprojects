@@ -1,0 +1,56 @@
+Project Management Tool :
+
+    https://trello.com/b/OG8rQ0q8/smart-home-system
+
+
+
+
+ - Make the Desktop accessible from outside
+ - Create an app to get the health of desktop (app running outside) (app can be Android app.. Private app)
+ - Can extend this later to add more applications like Home status, Home Temparature etc...
+ - Allow an task to be run from outside on Desktop
+ - Have to be very Security
+ - Build a generic infra for this....
+
+
+
+To enable ssh on Linux :
+
+https://www.dynu.com/Resources/Tutorials/DynamicDNS/How-to-access-CentOS-Ubuntu-Linux-Machine-remotely
+
+To allow a guest user on computer :
+
+https://askubuntu.com/questions/16650/create-a-new-ssh-user-on-ubuntu-server
+
+Check the end of file for Custom SSH config --> Edit SSH config file: sudo vi /etc/ssh/sshd_config
+
+Also on 192.168.1.1 (Home Router ---> Port forwarding rule is added.. Check under "Nat Forwarding"...)
+
+Added a new user "guest" with passwd "guest" for ssh access
+https://www.tecmint.com/add-users-in-linux/
+
+
+Now, ONLY guest/guest has ssh access and no root permission for him
+
+
+TODO:
+
+Restrict permissions for guest user from linux. Allow him to access only certain files and have certain permission
+Can also create many guests and add them in a group. Have very little permission for them
+guest/guest can be the psuedo "root" guest from app perspective. But NEVER give the actual root , ssh permission.. Not secure
+root should be allowed to operate ONLY physically and locally this computer. NO remote permissions EVER !!!!
+
+
+Create an infra to have my own messaging (custom) ---> Research about it
+
+See if only ssh is sufficient to be enabled for commands/msgs/data to be exchanged between client and server. 
+
+
+
+Install docker
+Install Apache Tomcat (Web Server) inside the container
+Do the entire developement inside the container
+Map the ports of container to Host
+
+
+Project Management Tool ----> Trello
