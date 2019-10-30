@@ -47,10 +47,24 @@ See if only ssh is sufficient to be enabled for commands/msgs/data to be exchang
 
 
 
-Install docker
-Install Apache Tomcat (Web Server) inside the container
-Do the entire developement inside the container
-Map the ports of container to Host
+
+Docker Commands : 
+
+root@pruthwin:/home/pruthwin# docker run -dit -p 8888:8080 --rm --name=SmartHome smarthome:v1
+root@pruthwin:/home/pruthwin# docker run -dit -p 8888:8080 --rm --name=SmartHome pruthwinkg/dockerhub-pruthwinkg:smarthome
 
 
-Project Management Tool ----> Trello
+
+Steps to push the local images to the docker-hub private repository:
+
+root@pruthwin:/home/pruthwin# docker tag smarthome:v1 pruthwinkg/dockerhub-pruthwinkg:smarthome
+root@pruthwin:/home/pruthwin# docker images
+REPOSITORY                        TAG                 IMAGE ID            CREATED             SIZE
+smarthome                         v1                  51860c49e845        30 minutes ago      736MB
+pruthwinkg/dockerhub-pruthwinkg   smarthome           51860c49e845        30 minutes ago      736MB
+ubuntu                            latest              cf0f3ca922e0        3 days ago          64.2MB
+alpine                            latest              961769676411        2 months ago        5.58MB
+
+root@pruthwin:/home/pruthwin# docker login
+root@pruthwin:/home/pruthwin# docker push pruthwinkg/dockerhub-pruthwinkg:smarthome
+
