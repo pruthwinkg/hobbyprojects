@@ -1,0 +1,15 @@
+CC = gcc
+
+# Pass gdb debug flag from command line
+# Usage `make D=-g`
+CC += $(D)
+
+CFLAGS += -Wall -Wextra -Werror
+
+C_SOURCES += $(wildcard *.c)
+C_OBJECTS += $(C_SOURCES:.c=.o)
+
+LDFLAGS += \
+	-L$(LIB_DIR) \
+
+INCLUDE += \

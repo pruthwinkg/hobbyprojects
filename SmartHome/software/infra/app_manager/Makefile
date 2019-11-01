@@ -1,6 +1,6 @@
 LDFLAG =
 LIBS = 
-EXECUTABLE_NAME = system_manager
+EXECUTABLE_NAME = app_manager
 
 all:$(EXECUTABLE_NAME)
 
