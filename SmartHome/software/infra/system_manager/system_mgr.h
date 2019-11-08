@@ -63,9 +63,9 @@ typedef struct {
 
 
 typedef enum {
-    SYS_MGR_CLIENT_STATE_RUNNING,
     SYS_MGR_CLIENT_STATE_STOPPED,
-    SYS_MGR_CLIENT_STATE_PAUSED
+    SYS_MGR_CLIENT_STATE_RUNNING,
+    SYS_MGR_CLIENT_STATE_PAUSED,
 } SYS_MGR_CLIENT_STATE;
 
 // This is an internal datastructure used by sys manager to maintain the info about the client in Running state
@@ -73,6 +73,7 @@ typedef struct {
     uint32_t clientID;
     pid_t pid;
     SYS_MGR_CLIENT_STATE state;
+    int stateCause; // Change it to an enum later TODO
 } SYS_MGR_CLIENT_STATUS;
 
 extern SYS_MGR_CLIENT_TBL system_mgr_client_tbl[SYS_MGR_CLIENT_MAX_CLIENTS];
@@ -83,3 +84,5 @@ SYS_MGR_ERR sysmgr_init_clients(void);
 SYS_MGR_ERR sysmgr_start_client(SYS_MGR_CLIENTS client);
 SYS_MGR_ERR sysmgr_stop_client(SYS_MGR_CLIENTS client);
 SYS_MGR_ERR sysmgr_restart_client(SYS_MGR_CLIENTS client);
+void sysmgr_display_client_status(void);
+
