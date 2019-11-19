@@ -7,14 +7,15 @@
 
 #include <netdb.h>
 #include "../../cmn/smarthome/smarthome_essentials.h"
+#include "../../cmn/logging/logging.h"
 
 #define COMM_MGR_LIB_NAME        "Communication Manager Library"
 
 #define COMM_MGR_LIB_ERR_BASE        (SMARTHOME_ERROR_CODE_COMM_MGR_LIB)
 
-#define COMM_MGR_LIB_ERROR  printf
-#define COMM_MGR_LIB_TRACE  printf
-#define COMM_MGR_LIB_DEBUG  printf
+#define COMM_MGR_LIB_ERROR  LOG_ERROR
+#define COMM_MGR_LIB_TRACE  LOG_TRACE
+#define COMM_MGR_LIB_DEBUG  LOG_DEBUG
 
 
 typedef enum {

@@ -1,6 +1,8 @@
 SUBDIRS = \
+	cmn \
 	system_manager \
 	app_manager \
+	comm_manager \
 #	database_manager \
 #	system_manager \
 

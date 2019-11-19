@@ -3,17 +3,21 @@
     
 
 *******************************************************************************/
+#ifndef INCLUDE_SYSTEM_MGR_H__
+#define INCLUDE_SYSTEM_MGR_H__
+
 #include <stdint.h>
 #include <stdio.h>
 #include <sys/types.h> /* for pid_t */
 
 
 #include "system_mgr_client_tbl.h"
-#include "../cmn/smarthome_error.h"
+#include "../cmn/smarthome/smarthome_essentials.h"
+#include "../cmn/logging/logging.h"
 
-#define SYS_MGR_ERROR   printf
-#define SYS_MGR_TRACE   printf
-#define SYS_MGR_DEBUG   printf    
+#define SYS_MGR_ERROR   LOG_ERROR
+#define SYS_MGR_TRACE   LOG_TRACE
+#define SYS_MGR_DEBUG   LOG_DEBUG 
 
 
 #define SYS_MGR_ERR_BASE        (SMARTHOME_ERROR_CODE_SYS_MGR)
@@ -86,3 +90,5 @@ SYS_MGR_ERR sysmgr_stop_client(SYS_MGR_CLIENTS client);
 SYS_MGR_ERR sysmgr_restart_client(SYS_MGR_CLIENTS client);
 void sysmgr_display_client_status(void);
 
+
+#endif /* INCLUDE_SYSTEM_MGR_H__ */

@@ -459,6 +459,8 @@ static void __comm_mgr_srv_free_master_id(uint16_t masterID) {
 int main() {
     COMM_MGR_SRV_TRACE("Starting the %s...\n", COMM_MGR_SRV_APP_NAME);
 	COMM_MGR_SRV_MASTER uds_master;
+    
+    log_lib_init(NULL, LOG_LVL_DEBUG);
 
 	comm_mgr_srv_init();
 

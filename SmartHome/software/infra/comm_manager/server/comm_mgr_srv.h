@@ -6,15 +6,15 @@
 #define INCLUDE_COMM_MGR_H__
 
 #include "../../cmn/smarthome/smarthome_essentials.h"
-
+#include "../../cmn/logging/logging.h"
 
 #define COMM_MGR_SRV_APP_NAME        "Communication Manager Server"
 
 #define COMM_MGR_SRV_ERR_BASE        (SMARTHOME_ERROR_CODE_COMM_MGR_SRV)
 
-#define COMM_MGR_SRV_ERROR  printf
-#define COMM_MGR_SRV_TRACE  printf
-#define COMM_MGR_SRV_DEBUG  printf
+#define COMM_MGR_SRV_ERROR  LOG_ERROR
+#define COMM_MGR_SRV_TRACE  LOG_TRACE
+#define COMM_MGR_SRV_DEBUG  LOG_DEBUG
 
 #define COMM_MGR_SRV_BACKLOG        (32)
 #define COMM_MGR_SRV_MAX_MASTERS    (5)

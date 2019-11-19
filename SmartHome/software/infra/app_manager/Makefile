@@ -1,5 +1,5 @@
 LDFLAG =
-LIBS = 
+LIBS = -llogging 
 EXECUTABLE_NAME = app_manager
 
 all:$(EXECUTABLE_NAME)
@@ -14,7 +14,7 @@ all:$(EXECUTABLE_NAME)
 CFLAG = -o
 
 $(EXECUTABLE_NAME):$(C_OBJECTS)
-	$(CC) $(C_OBJECTS) $(CFLAG) $(BIN_DIR)/$(EXECUTABLE_NAME) 
+	$(CC) $(C_OBJECTS) $(LDFLAGS) $(CFLAG) $(BIN_DIR)/$(EXECUTABLE_NAME)  $(LIBS)
 
 %.o: %.c
 	$(CC) $(CFLAGS) $(INCLUDE) -c $< -o $@

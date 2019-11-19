@@ -6,6 +6,7 @@
 *******************************************************************************/
 
 #include "../system_manager/system_mgr.h"
+#include "../cmn/logging/logging.h"
 
 int main() {
 

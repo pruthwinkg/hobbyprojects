@@ -9,7 +9,8 @@ CFLAGS += -Wall -Wextra -Werror
 C_SOURCES += $(wildcard *.c)
 C_OBJECTS += $(C_SOURCES:.c=.o)
 
+# Adding rpath, so that no need use the env variable LD_LIBRARY_PATH
 LDFLAGS += \
-	-L$(LIB_DIR) \
+	-L$(LIB_DIR) -Wl,-rpath=$(LIB_DIR)\
 
 INCLUDE += \
