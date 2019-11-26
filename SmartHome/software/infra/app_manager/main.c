@@ -5,8 +5,8 @@
                 App manager is managed by system manager
 *******************************************************************************/
 
-#include "../system_manager/system_mgr.h"
-#include "../cmn/logging/logging.h"
+#include "system_mgr.h"
+#include "logging.h"
 
 int main() {
 

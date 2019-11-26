@@ -21,9 +21,9 @@ int main() {
     COMM_MGR_LIB_CLIENT client;
     COMM_MGR_LIB_ERR rc = COMM_MGR_LIB_SUCCESS;
     char buf[4096];
-
+ 
+    comm_mgr_lib_init(LOG_LVL_DEBUG);
     COMM_MGR_LIB_TRACE("Starting the test of %s\n", COMM_MGR_LIB_NAME);
-
 #ifdef TEST_UNIX_AF
     memset(&client, 0, sizeof(COMM_MGR_LIB_CLIENT));
     client.clientAf = COMM_MGR_LIB_IPC_AF_UNIX_SOCK_STREAM;
@@ -31,13 +31,16 @@ int main() {
     COMM_MGR_LIB_DEBUG("Starting %s test for COMM_MGR_IPC_LIB_AF_UNIX\n", COMM_MGR_LIB_NAME);
 
     rc = comm_mgr_lib_create_client(&client);
-    if(rc != COMM_MGR_LIB_SUCCESS) {
+    if(rc != COMM_MGR_LIB_SUCCESS) { 
         COMM_MGR_LIB_ERROR("%s test failed for COMM_MGR_IPC_LIB_AF_UNIX, rc = 0x%0x\n", COMM_MGR_LIB_NAME, rc);
+        return -1;
     }
 
     COMM_MGR_LIB_DEBUG("Client created. Ready to send data\n");
     while( (rc=read(STDIN_FILENO, buf, sizeof(buf))) > 0) {
-        comm_mgr_lib_send_data(&client, buf, strlen(buf));
+        if(comm_mgr_lib_send_data(&client, buf, strlen(buf)) != COMM_MGR_LIB_SUCCESS ) {
+            COMM_MGR_LIB_ERROR("Failed to send the data : %s\n", buf);
+        }
         memset(buf, 0, sizeof(buf));
     }
     if(rc != COMM_MGR_LIB_SUCCESS) {

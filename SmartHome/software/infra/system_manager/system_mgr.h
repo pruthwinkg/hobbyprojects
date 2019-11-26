@@ -12,8 +12,8 @@
 
 
 #include "system_mgr_client_tbl.h"
-#include "../cmn/smarthome/smarthome_essentials.h"
-#include "../cmn/logging/logging.h"
+#include "smarthome_essentials.h"
+#include "logging.h"
 
 #define SYS_MGR_ERROR   LOG_ERROR
 #define SYS_MGR_TRACE   LOG_TRACE

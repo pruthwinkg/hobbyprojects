@@ -14,10 +14,29 @@
 #include "comm_mgr_lib.h"
 #include "../comm_mgr_cmn.h"
 
+boolean comm_mgr_lib_initialized = FALSE;
+
+COMM_MGR_LIB_ERR comm_mgr_lib_init(LOG_LEVEL level) {
+    log_lib_init(NULL, level);
+    comm_mgr_lib_initialized = TRUE;
+    return COMM_MGR_LIB_SUCCESS; 
+}
+
+COMM_MGR_LIB_ERR comm_mgr_lib_destroy() {
+    COMM_MGR_LIB_TRACE("Not yet implemented");
+    comm_mgr_lib_initialized = FALSE;
+    return COMM_MGR_LIB_SUCCESS; 
+}
+
 COMM_MGR_LIB_ERR comm_mgr_lib_create_client(COMM_MGR_LIB_CLIENT *client) {
     struct sockaddr_un un_addr;
     struct sockaddr_in in_addr;
     int fd;
+
+    if(comm_mgr_lib_initialized == FALSE) {
+        COMM_MGR_LIB_ERROR("%s not yet initialized", COMM_MGR_LIB_NAME); 
+        return COMM_MGR_LIB_NOT_INITIALIZED;
+    }
 
     if (client == NULL) {
         return COMM_MGR_LIB_INVALID_ARG;
@@ -29,7 +48,7 @@ COMM_MGR_LIB_ERR comm_mgr_lib_create_client(COMM_MGR_LIB_CLIENT *client) {
         case COMM_MGR_LIB_IPC_AF_UNIX_SOCK_STREAM:
             {
                 if ( (fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
-                    perror("socket error");
+                    COMM_MGR_LIB_ERROR("socket error");
                     return COMM_MGR_LIB_SOCKET_CREATE_ERR;
                 }
                 memset(&un_addr, 0, sizeof(un_addr));
@@ -37,7 +56,7 @@ COMM_MGR_LIB_ERR comm_mgr_lib_create_client(COMM_MGR_LIB_CLIENT *client) {
                 strcpy(un_addr.sun_path, SOCKET_FILE_PATH); 
 
                 if (connect(fd, (struct sockaddr*)&un_addr, sizeof(un_addr)) == -1) {
-                    perror("connect error");
+                    COMM_MGR_LIB_ERROR("connect error");
                     return COMM_MGR_LIB_CONNECT_ERR;
                 } 
             }
@@ -52,7 +71,7 @@ COMM_MGR_LIB_ERR comm_mgr_lib_create_client(COMM_MGR_LIB_CLIENT *client) {
                 }
 
                 if ( (fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
-                    perror("socket error");
+                    COMM_MGR_LIB_ERROR("socket error");
                     return COMM_MGR_LIB_SOCKET_CREATE_ERR;
                 }
                 
@@ -61,7 +80,7 @@ COMM_MGR_LIB_ERR comm_mgr_lib_create_client(COMM_MGR_LIB_CLIENT *client) {
                 }
 
                 if (server == NULL) {
-                    fprintf(stderr,"ERROR, no such host\n");
+                    COMM_MGR_LIB_ERROR("No such host\n");
                     return COMM_MGR_LIB_BAD_SERVER;
                 }
                                 
@@ -75,7 +94,7 @@ COMM_MGR_LIB_ERR comm_mgr_lib_create_client(COMM_MGR_LIB_CLIENT *client) {
                 in_addr.sin_port = htons(client->portNum);
 
                 if (connect(fd, (struct sockaddr*)&in_addr, sizeof(in_addr)) == -1) {
-                    perror("connect error");
+                    COMM_MGR_LIB_ERROR("connect error");
                     return COMM_MGR_LIB_CONNECT_ERR;
                 }
             }    

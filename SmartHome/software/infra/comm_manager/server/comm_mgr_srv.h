@@ -5,8 +5,8 @@
 #ifndef INCLUDE_COMM_MGR_H__
 #define INCLUDE_COMM_MGR_H__
 
-#include "../../cmn/smarthome/smarthome_essentials.h"
-#include "../../cmn/logging/logging.h"
+#include "smarthome_essentials.h"
+#include "logging.h"
 
 #define COMM_MGR_SRV_APP_NAME        "Communication Manager Server"
 

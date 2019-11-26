@@ -70,7 +70,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_init_master(COMM_MGR_SRV_MASTER *master) {
     }
 
 	if (comm_mgr_srv_initialized == FALSE) {
-		COMM_MGR_SRV_ERROR("Comm_mgr is not yet initialized\n");
+		COMM_MGR_SRV_ERROR("Comm_mgr is not yet initialized");
 		return COMM_MGR_SRV_NOT_INITIALIZED;
 	}
 
@@ -111,7 +111,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_init_master(COMM_MGR_SRV_MASTER *master) {
 		    /*************************************************************/			
 			if (master->nonblockingIO == TRUE) {
                 if( comm_mgr_set_non_blocking_io(master->__masterFd) != COMM_MGR_SRV_SUCCESS) {
-                    COMM_MGR_SRV_TRACE("Setting the socket %d in blocking mode\n", master->__masterFd);
+                    COMM_MGR_SRV_TRACE("Setting the socket %d in blocking mode", master->__masterFd);
                 }
 			}
 
@@ -155,17 +155,17 @@ COMM_MGR_SRV_ERR comm_mgr_srv_init_master(COMM_MGR_SRV_MASTER *master) {
 
 	if (master->masterAf == COMM_MGR_SRV_IPC_AF_UNIX_SOCK_STREAM) {
 		COMM_MGR_SRV_TRACE("Created a %s with "
-					    ", Master ID : %d, UDS File : %s successfully\n", 
+					    ", Master ID : %d, UDS File : %s successfully", 
 						COMM_MGR_SRV_APP_NAME,
 						master->__masterID, SOCKET_FILE_PATH);
 	} else if (master->masterAf == COMM_MGR_SRV_IPC_AF_INET_SOCK_STREAM) {
 		COMM_MGR_SRV_TRACE("Created a %s with "
-					    ", Master ID : %d, Port : %d successfully\n", 
+					    ", Master ID : %d, Port : %d successfully", 
 						COMM_MGR_SRV_APP_NAME,
 						master->__masterID, master->portNum);
 	}
 
-	COMM_MGR_SRV_TRACE("%s, Master ID [%d] started to listen\n", COMM_MGR_SRV_APP_NAME, master->__masterID);
+	COMM_MGR_SRV_TRACE("%s, Master ID [%d] started to listen", COMM_MGR_SRV_APP_NAME, master->__masterID);
 
     return COMM_MGR_SRV_SUCCESS;
 }
@@ -197,7 +197,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_accept_clients(uint16_t masterID) {
 	char buffer[4096]; // Delete it
 
 	if (master->__masterReady == FALSE) {
-		COMM_MGR_SRV_ERROR("Master ID [%d] not yet ready\n", masterID);
+		COMM_MGR_SRV_ERROR("Master ID [%d] not yet ready", masterID);
 		return COMM_MGR_SRV_MASTER_NOT_READY;
 	}
 
@@ -252,7 +252,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_accept_clients(uint16_t masterID) {
 		/* out expired.         								  */
       	/**********************************************************/
       	if (rc == 0) {
-        	COMM_MGR_SRV_ERROR("select() timed out.  End program.\n");
+        	COMM_MGR_SRV_ERROR("select() timed out.  End program.");
 			rc = COMM_MGR_SRV_SERVER_TIMEOUT;
          	goto cleanup_and_exit;
       	}
@@ -280,7 +280,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_accept_clients(uint16_t masterID) {
 				/* Check to see if this is the listening socket     */
 				/****************************************************/
 				if (i == listen_sd) {
-					COMM_MGR_SRV_DEBUG("  Listening socket is readable\n");
+					COMM_MGR_SRV_DEBUG("Listening socket is readable");
 					/*************************************************/
 					/* Accept all incoming connections that are      */
 					/* queued up on the listening socket before we   */
@@ -311,7 +311,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_accept_clients(uint16_t masterID) {
                         /*************************************************************/			
                         if (master->nonblockingIO == TRUE) {
                             if( comm_mgr_set_non_blocking_io(new_sd) != COMM_MGR_SRV_SUCCESS) {
-                                COMM_MGR_SRV_TRACE("Setting the socket %d in blocking mode\n", new_sd);
+                                COMM_MGR_SRV_TRACE("Setting the socket %d in blocking mode", new_sd);
                             }
                         }
 
@@ -319,7 +319,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_accept_clients(uint16_t masterID) {
 						/* Add the new incoming connection to the     */
 						/* master read set                            */
 						/**********************************************/
-						COMM_MGR_SRV_DEBUG("  New incoming connection - %d\n", new_sd);
+						COMM_MGR_SRV_DEBUG("  New incoming connection - %d", new_sd);
 						FD_SET(new_sd, &master_set);
 						if (new_sd > max_sd) {
 							max_sd = new_sd;
@@ -336,7 +336,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_accept_clients(uint16_t masterID) {
 				/* existing connection must be readable             */
 				/****************************************************/
 				else {
-					COMM_MGR_SRV_DEBUG("  Descriptor %d is readable\n", i);
+					COMM_MGR_SRV_DEBUG("  Descriptor %d is readable", i);
 					close_conn = FALSE;
 					/*************************************************/
 					/* Receive all incoming data on this socket      */
@@ -363,7 +363,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_accept_clients(uint16_t masterID) {
 						/* closed by the client                       */
 						/**********************************************/
 						if (rc == 0) {
-							COMM_MGR_SRV_TRACE("  Connection closed\n");
+							COMM_MGR_SRV_TRACE("  Connection closed");
 							close_conn = TRUE;
 							break;
 						}
@@ -372,8 +372,8 @@ COMM_MGR_SRV_ERR comm_mgr_srv_accept_clients(uint16_t masterID) {
 						/* Data was received                          */
 						/**********************************************/
 						len = rc;
-						COMM_MGR_SRV_DEBUG("  %d bytes received\n", len);
-						COMM_MGR_SRV_DEBUG("Data received : %s\n", buffer);
+						COMM_MGR_SRV_DEBUG("  %d bytes received", len);
+						COMM_MGR_SRV_DEBUG("Data received : %s", buffer);
 
 #if 0 // TODO : Enable it Later
 						/**********************************************/
@@ -442,7 +442,7 @@ static uint16_t __comm_mgr_srv_get_next_free_master_id(COMM_MGR_SRV_IPC_AF af) {
 			return __comm_mgr_srv_master_id_array[i];
 		}
 	}
-	COMM_MGR_SRV_ERROR("Exhausted all the Master IDs\n");
+	COMM_MGR_SRV_ERROR("Exhausted all the Master IDs");
 	return 0xFFFF;
 }
 
@@ -457,7 +457,7 @@ static void __comm_mgr_srv_free_master_id(uint16_t masterID) {
 
 
 int main() {
-    COMM_MGR_SRV_TRACE("Starting the %s...\n", COMM_MGR_SRV_APP_NAME);
+    COMM_MGR_SRV_TRACE("Starting the %s...", COMM_MGR_SRV_APP_NAME);
 	COMM_MGR_SRV_MASTER uds_master;
     
     log_lib_init(NULL, LOG_LVL_DEBUG);
@@ -473,7 +473,7 @@ int main() {
     if (comm_mgr_srv_init_master(&uds_master) != COMM_MGR_SRV_SUCCESS) {
 		goto err;
 	}    
-    COMM_MGR_SRV_TRACE("%s ready to communicate\n", COMM_MGR_SRV_APP_NAME);
+    COMM_MGR_SRV_TRACE("%s ready to communicate", COMM_MGR_SRV_APP_NAME);
 	
 	comm_mgr_srv_accept_clients(uds_master.__masterID);
 

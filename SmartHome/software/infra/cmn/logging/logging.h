@@ -11,7 +11,7 @@
 #include <time.h>
 #include <string.h>
 
-#include "../smarthome/smarthome_essentials.h"
+#include "smarthome_essentials.h"
 
 #define LOG_MAX_FILENAME_LEN    (80)
 #define LOG_INTERNAL_BUF_SIZE   (240)
@@ -20,7 +20,8 @@ typedef enum {
     LOG_LVL_CRITICAL = 0,
     LOG_LVL_ERROR,
     LOG_LVL_TRACE,
-    LOG_LVL_DEBUG
+    LOG_LVL_DEBUG,
+    LOG_LVL_ALL
 } LOG_LEVEL;
 
 typedef struct {
@@ -34,7 +35,7 @@ extern LOG_PROPERTIES log_property;
 
 #define LOG_ERROR(...)       { \
                              char __log_internal_buf[LOG_INTERNAL_BUF_SIZE]; \
-                             if(log_property.level > LOG_LVL_ERROR) { \
+                             if(log_property.level >= LOG_LVL_ERROR) { \
                                 snprintf(__log_internal_buf, sizeof(__log_internal_buf), __VA_ARGS__); \
                                 log_lib_message(LOG_LVL_ERROR, __func__, __LINE__, __log_internal_buf); \
                              } \
@@ -43,7 +44,7 @@ extern LOG_PROPERTIES log_property;
 
 #define LOG_TRACE(...)       { \
                              char __log_internal_buf[LOG_INTERNAL_BUF_SIZE]; \
-                             if(log_property.level > LOG_LVL_TRACE) { \
+                             if(log_property.level >= LOG_LVL_TRACE) { \
                                 snprintf(__log_internal_buf, sizeof(__log_internal_buf), __VA_ARGS__); \
                                 log_lib_message(LOG_LVL_TRACE, __func__, __LINE__, __log_internal_buf); \
                              } \
@@ -52,7 +53,7 @@ extern LOG_PROPERTIES log_property;
 
 #define LOG_DEBUG(...)       { \
                              char __log_internal_buf[LOG_INTERNAL_BUF_SIZE]; \
-                             if(log_property.level > LOG_LVL_DEBUG) { \
+                             if(log_property.level >= LOG_LVL_DEBUG) { \
                                 snprintf(__log_internal_buf, sizeof(__log_internal_buf), __VA_ARGS__); \
                                 log_lib_message(LOG_LVL_DEBUG, __func__, __LINE__, __log_internal_buf); \
                              } \

@@ -1,6 +1,0 @@
-logging:logging.o
-	gcc -DTEST_LOG_LIB -o logging logging.o
-logging.o:logging.h
-	gcc -c -g -DTEST_LOG_LIB logging.c logging.h
-clean:
-	rm -rf *.o *.gch logging

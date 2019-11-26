@@ -6,8 +6,8 @@
 #define INCLUDE_COMM_MGR_LIB_H__
 
 #include <netdb.h>
-#include "../../cmn/smarthome/smarthome_essentials.h"
-#include "../../cmn/logging/logging.h"
+#include "smarthome_essentials.h"
+#include "logging.h"
 
 #define COMM_MGR_LIB_NAME        "Communication Manager Library"
 
@@ -29,6 +29,7 @@ typedef enum {
     COMM_MGR_LIB_SEND_ERR,
     COMM_MGR_LIB_RECV_ERR,
     COMM_MGR_LIB_CLIENT_NOT_CREATED,
+    COMM_MGR_LIB_NOT_INITIALIZED,
 }COMM_MGR_LIB_ERR;
 
 typedef enum {
@@ -51,6 +52,8 @@ typedef struct {
 /******************************************************************************/
 /*          Public Functions                                                  */
 /******************************************************************************/
+COMM_MGR_LIB_ERR comm_mgr_lib_init(LOG_LEVEL level);
+COMM_MGR_LIB_ERR comm_mgr_lib_destroy(void);
 COMM_MGR_LIB_ERR comm_mgr_lib_create_client(COMM_MGR_LIB_CLIENT *client);
 COMM_MGR_LIB_ERR comm_mgr_lib_send_data(COMM_MGR_LIB_CLIENT *client, char *msg, int len);
 
