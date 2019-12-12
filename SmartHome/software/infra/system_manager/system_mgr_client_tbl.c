@@ -9,7 +9,7 @@
 SYS_MGR_CLIENT_TBL system_mgr_client_tbl[] = { 
     {
         .clientID = SYS_MGR_CLIENT_IPC_MANAGER,
-        .clientName = "ipc_manager",
+        .clientName = "comm_manager",
         .clientProperty = 
             {
                 .bootMode = SYS_MGR_CLIENT_BOOT_ALWAYS,

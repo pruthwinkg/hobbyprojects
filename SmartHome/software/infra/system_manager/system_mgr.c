@@ -8,6 +8,7 @@
 #include <unistd.h> /* for fork */
 #include <sys/wait.h> /* for wait */
 
+
 SYS_MGR_CLIENT_STATUS system_mgr_client_status[SYS_MGR_CLIENT_MAX_CLIENTS];
 
 SYS_MGR_ERR sysmgr_init_clients() {

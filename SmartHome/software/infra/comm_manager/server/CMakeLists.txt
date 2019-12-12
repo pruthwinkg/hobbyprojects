@@ -5,7 +5,8 @@ set (EXECUTABLE_NAME "comm_manager")
 set(LIBRARY_LIST "logging")
 
 # Set the source files required
-set(SOURCE_FILE_LIST "comm_mgr_srv.c")
+set(SOURCE_FILE_LIST "comm_mgr_srv.c"
+                     "comm_mgr_srv_enums_defs.c")
 
 # Generate the executable
 add_executable (${EXECUTABLE_NAME} ${SOURCE_FILE_LIST})

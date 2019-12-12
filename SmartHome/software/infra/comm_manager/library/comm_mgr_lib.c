@@ -12,7 +12,7 @@
 #include <arpa/inet.h>
 
 #include "comm_mgr_lib.h"
-#include "../comm_mgr_cmn.h"
+#include "comm_mgr_cmn.h"
 
 boolean comm_mgr_lib_initialized = FALSE;
 
@@ -143,65 +143,23 @@ COMM_MGR_LIB_ERR comm_mgr_lib_send_data(COMM_MGR_LIB_CLIENT *client, char *msg, 
 }
 
 
+COMM_MGR_LIB_ERR comm_mgr_lib_recv_data(COMM_MGR_LIB_CLIENT *client, char *msg, int len) {
+    struct hostent *server = &(client->server);
 
-
-#if 0
-
-#ifdef TEST_COMM_MGR_LIB // To be passed via gcc
-
-int main(int argc, char *argv[]) {
-    COMM_MGR_LIB_CLIENT client;
-    COMM_MGR_LIB_ERR rc = COMM_MGR_LIB_SUCCESS;
-    char buf[4096];
-
-#ifdef TEST_UNIX_AF
-    memset(&client, 0, sizeof(COMM_MGR_LIB_CLIENT));
-    client.clientAf = COMM_MGR_LIB_IPC_AF_UNIX_SOCK_STREAM;
-
-    COMM_MGR_LIB_DEBUG("Starting comm_ger_lib test for COMM_MGR_IPC_LIB_AF_UNIX\n");
-
-    rc = comm_mgr_lib_create_client(&client);
-    if(rc != COMM_MGR_LIB_SUCCESS) {
-        COMM_MGR_LIB_ERROR("Comm_mgr test failed for COMM_MGR_IPC_LIB_AF_UNIX, rc = 0x%0x\n", rc);
+    if ((client == NULL) || (msg == NULL)) {
+        return COMM_MGR_LIB_INVALID_ARG;
     }
 
-    COMM_MGR_LIB_DEBUG("Client created. Ready to send data\n");
-    while( (rc=read(STDIN_FILENO, buf, sizeof(buf))) > 0) {
-        comm_mgr_lib_send_data(&client, buf, strlen(buf));
-        memset(buf, 0, sizeof(buf));
-    }
-    if(rc != COMM_MGR_LIB_SUCCESS) {
-        COMM_MGR_LIB_ERROR("Comm_mgr test failed for COMM_MGR_IPC_LIB_AF_UNIX, rc = 0x%0x\n", rc);
-    }
-   
-#else
-    memset(&client, 0, sizeof(COMM_MGR_LIB_CLIENT));
-    client.clientAf = COMM_MGR_LIB_IPC_AF_INET_SOCK_STREAM;
-    client.server.h_name = "localhost";
-    client.portNum = 5001;
-
-    COMM_MGR_LIB_DEBUG("Starting comm_ger_lib test for COMM_MGR_IPC_LIB_AF_INET\n");
-
-    rc = comm_mgr_lib_create_client(&client); 
-    if(rc != COMM_MGR_LIB_SUCCESS) {
-        COMM_MGR_LIB_ERROR("Comm_mgr test failed for COMM_MGR_IPC_LIB_AF_INET, rc = 0x%0x\n", rc);
-    }
-    
-    COMM_MGR_LIB_DEBUG("Client created. Ready to send data\n");
-    comm_mgr_lib_send_data(&client, "Hello. How r u", 20);
-    while( (rc=read(STDIN_FILENO, buf, sizeof(buf))) > 0) {
-        comm_mgr_lib_send_data(&client, buf, strlen(buf));
-        memset(buf, 0, sizeof(buf));
-    }
-    if(rc != COMM_MGR_LIB_SUCCESS) {
-        COMM_MGR_LIB_ERROR("Comm_mgr test failed for COMM_MGR_IPC_LIB_AF_UNIX, rc = 0x%0x\n", rc);
+    if(!client->__clientReady) {
+        COMM_MGR_LIB_ERROR("Client is not yet created\n");
+        return COMM_MGR_LIB_CLIENT_NOT_CREATED;
     }
 
+    if (recv(client->__fd, msg, len, 0) == -1) {
+        COMM_MGR_LIB_ERROR("Receive error\n");
+        return COMM_MGR_LIB_RECV_ERR;        
+    }
 
-#endif
-    return 0;
+    return COMM_MGR_LIB_SUCCESS;
 }
 
-#endif
-
-#endif

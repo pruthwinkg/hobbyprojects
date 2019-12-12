@@ -11,6 +11,8 @@
 #include "smarthome_error.h"
 #include "smarthome_types.h"
 
+// Use the Below Macro to display any enum in string format
+#define DECODE_ENUM(Enum, Elem)   GetString##Enum((Enum)Elem)
 
 
 #endif /* INCLUDE_SMARTHOME_ESSENTIALS_H__ */

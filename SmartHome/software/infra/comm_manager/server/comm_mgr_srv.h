@@ -7,10 +7,9 @@
 
 #include "smarthome_essentials.h"
 #include "logging.h"
+#include "comm_mgr_srv_enums.h"
 
 #define COMM_MGR_SRV_APP_NAME        "Communication Manager Server"
-
-#define COMM_MGR_SRV_ERR_BASE        (SMARTHOME_ERROR_CODE_COMM_MGR_SRV)
 
 #define COMM_MGR_SRV_ERROR  LOG_ERROR
 #define COMM_MGR_SRV_TRACE  LOG_TRACE
@@ -26,39 +25,6 @@
 extern boolean comm_mgr_srv_initialized;
 
 //extern char buffer[4096]; // // TODO :Make a sophesticated data structure
-
-
-typedef enum {
-    COMM_MGR_SRV_SUCCESS = 0,
-    COMM_MGR_SRV_INIT_FAILURE = COMM_MGR_SRV_ERR_BASE,
-    COMM_MGR_SRV_ALREADY_INITIALIZED,
-    COMM_MGR_SRV_NOT_INITIALIZED,
-    COMM_MGR_SRV_DESTROY_FAILURE,
-    COMM_MGR_SRV_INVALID_ARG,
-    COMM_MGR_SRV_UNKNOWN_AF_TYPE,
-    COMM_MGR_SRV_SOCKET_CREATE_ERR,
-    COMM_MGR_SRV_SOCKET_OPT_ERR,
-    COMM_MGR_SRV_SOCKET_BIND_ERR,
-    COMM_MGR_SRV_SOCKET_LISTEN_ERR,
-    COMM_MGR_SRV_SOCKET_ACCEPT_ERR,
-    COMM_MGR_SRV_CONNECT_ERR,
-    COMM_MGR_SRV_FCNTL_NON_BLOCK_ERR,
-    COMM_MGR_SRV_MASTER_NOT_READY, 
-    COMM_MGR_SRV_BAD_SERVER,
-    COMM_MGR_SRV_SERVER_TIMEOUT,
-    COMM_MGR_SRV_SEND_ERR,
-    COMM_MGR_SRV_RECV_ERR,
-    COMM_MGR_SRV_CLIENT_NOT_CREATED,
-    COMM_MGR_SRV_SELECT_ERR,
-} COMM_MGR_SRV_ERR;
-
-
-typedef enum {
-    COMM_MGR_SRV_IPC_AF_UNIX_SOCK_STREAM = 0,
-    COMM_MGR_SRV_IPC_AF_UNIX_SOCK_DGRAM,
-    COMM_MGR_SRV_IPC_AF_INET_SOCK_STREAM,
-    COMM_MGR_SRV_IPC_AF_INET_SOCK_DGRAM
-} COMM_MGR_SRV_IPC_AF;
 
 // This structure defines the Master (Server)
 typedef struct {

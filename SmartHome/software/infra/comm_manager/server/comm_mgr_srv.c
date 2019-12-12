@@ -12,7 +12,7 @@
 #include <fcntl.h> 
 
 #include "comm_mgr_srv.h"
-#include "../comm_mgr_cmn.h"
+#include "comm_mgr_cmn.h"
 
 
 // Resource :
@@ -29,7 +29,7 @@ boolean comm_mgr_srv_initialized = FALSE;
 
 COMM_MGR_SRV_ERR comm_mgr_srv_init() {
 	if (comm_mgr_srv_initialized == TRUE) {
-		COMM_MGR_SRV_ERROR("Comm_mgr_srv already initialized\n");
+		COMM_MGR_SRV_ERROR("Comm_mgr_srv already initialized");
 		return COMM_MGR_SRV_ALREADY_INITIALIZED;
 	}
 
@@ -42,7 +42,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_init() {
 
 COMM_MGR_SRV_ERR comm_mgr_srv_destroy() {
 	if (comm_mgr_srv_initialized == FALSE) {
-		COMM_MGR_SRV_ERROR("Comm_mgr_srv already destroyed or not yet initialized\n");
+		COMM_MGR_SRV_ERROR("Comm_mgr_srv already destroyed or not yet initialized");
 		return COMM_MGR_SRV_DESTROY_FAILURE;
 	}
 
@@ -58,7 +58,7 @@ COMM_MGR_SRV_ERR comm_mgr_set_non_blocking_io(int socket_fd) {
     int rc = 0;
     rc = fcntl(socket_fd, F_SETFL, (fcntl(socket_fd, F_GETFL, 0) | O_NONBLOCK));
     if (rc < 0) {
-       COMM_MGR_SRV_ERROR("Failed to set the socket %d to Non-blocking mode\n", socket_fd);
+       COMM_MGR_SRV_ERROR("Failed to set the socket %d to Non-blocking mode", socket_fd);
        return COMM_MGR_SRV_FCNTL_NON_BLOCK_ERR;
     }
     return COMM_MGR_SRV_SUCCESS;
@@ -231,7 +231,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_accept_clients(uint16_t masterID) {
       	/**********************************************************/
       	/* Call select() and wait srvInactivityTimeOut   	      */
       	/**********************************************************/
-      	COMM_MGR_SRV_DEBUG("Waiting on select()...\n");
+      	COMM_MGR_SRV_DEBUG("Waiting on select()...");
 		if (master->srvInactivityTimeOut < 1) {
 	      	rc = select(max_sd + 1, &working_set, NULL, NULL, NULL);
 		} else {
@@ -375,6 +375,10 @@ COMM_MGR_SRV_ERR comm_mgr_srv_accept_clients(uint16_t masterID) {
 						COMM_MGR_SRV_DEBUG("  %d bytes received", len);
 						COMM_MGR_SRV_DEBUG("Data received : %s", buffer);
 
+// TODO : Implement a State Machine to determine the next steps in Protcol. Refer software_design doc
+// TODO : Create another file for State Machine and all its functions
+
+
 #if 0 // TODO : Enable it Later
 						/**********************************************/
 						/* Echo the data back to the client           */
@@ -386,6 +390,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_accept_clients(uint16_t masterID) {
 						 break;
 						}
 #endif
+                        
 					} while (TRUE);
 
 					/*************************************************/
@@ -485,126 +490,4 @@ err:
     return 0;
 }
 
-#if 0
 
-#if LOCAL_COMM 
-
-#define SOCKET_FILE_PATH  "server.socket"
-
-int main() {
-    printf("This is Unix Server example code\n");
-
-    struct sockaddr_un addr;
-    int len = 0;
-	char buf[100];
-  	int fd,cl,rc;
-
-    if ( (fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
-        perror("socket error");
-        exit(-1);
-    }
-
-    memset(&addr, 0, sizeof(addr));
-    addr.sun_family = AF_UNIX;   
-    strcpy(addr.sun_path, SOCKET_FILE_PATH); 
-    len = sizeof(addr);
-    
-    unlink(SOCKET_FILE_PATH);
-
-    if (bind(fd, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
-        perror("bind error");
-        exit(-1);
-    }
-
-  	if (listen(fd, 5) == -1) {
-    	perror("listen error");
-    	exit(-1);
-  	}
-
-	printf("socket listening...\n");
-
-	while(1) {
-		if ( (cl = accept(fd, NULL, NULL)) == -1) {
-      		perror("accept error");
-      		continue;
-    	}
-
-    	while ( (rc=read(cl,buf,sizeof(buf))) > 0) {
-      		printf("read %u bytes: %.*s\n", rc, rc, buf);
-    	}	
-
-		if (rc == -1) {
-		  perror("read");
-		  exit(-1);
-		} else if (rc == 0) {
-		  printf("EOF\n");
-		  close(cl);
-		}
-	}
-    return 0;
-}
-
-#else
-
-int main() {
-    printf("This is Internet Server example code\n");
-
-    struct sockaddr_in addr;
-    int len = 0;
-	char buf[100];
-  	int portno;    
-  	int fd,cl,rc;
-
-    if ( (fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
-        perror("socket error");
-        exit(-1);
-    }
-
-
-    /* Initialize socket structure */
-   	memset(&addr, 0, sizeof(addr)); 
-   	portno = 5001;
-   
-   	addr.sin_family = AF_INET;
-   	addr.sin_addr.s_addr = INADDR_ANY;
-   	addr.sin_port = htons(portno);
-    
-	if (bind(fd, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
-        perror("bind error");
-        exit(-1);
-    }
-
-  	if (listen(fd, 5) == -1) {
-    	perror("listen error");
-    	exit(-1);
-  	}
-
-	printf("socket listening...\n");
-
-	while(1) {
-		if ( (cl = accept(fd, NULL, NULL)) == -1) {
-      		perror("accept error");
-      		continue;
-    	}
-
-    	while ( (rc=read(cl,buf,sizeof(buf))) > 0) {
-      		printf("read %u bytes: %.*s\n", rc, rc, buf);
-    	}	
-
-		if (rc == -1) {
-		  perror("read");
-		  exit(-1);
-		} else if (rc == 0) {
-		  printf("EOF\n");
-		  close(cl);
-		}
-	}
-
-    return 0;
-}
-
-
-
-#endif
-
-#endif
