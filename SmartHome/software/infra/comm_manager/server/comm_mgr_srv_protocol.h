@@ -12,9 +12,10 @@
 
 
 // Map of <UID, Server FD>
-typedef struct {
-    
-
+typedef struct {        
+    boolean valid;
+    uint32_t client_uid;
+    int server_fd;
 } COMM_MGR_SRV_PROTO_TBL;
 
 

@@ -45,12 +45,13 @@ int main() {
         }
         memset(buf, 0, sizeof(buf));
 
+#if 0
        if(comm_mgr_lib_recv_data(&client, recv_buf, strlen(recv_buf)) != COMM_MGR_LIB_SUCCESS ) {
             COMM_MGR_LIB_ERROR("Failed to recv the data : %s", recv_buf);
        }
        COMM_MGR_LIB_TRACE("Data received : %s", recv_buf);
        memset(recv_buf, 0, sizeof(recv_buf));
-       
+#endif       
     }
     if(rc != COMM_MGR_LIB_SUCCESS) {
         COMM_MGR_LIB_ERROR("%s test failed for COMM_MGR_IPC_LIB_AF_UNIX, rc = 0x%0x", COMM_MGR_LIB_NAME, rc);

@@ -13,7 +13,8 @@
 
 #include "comm_mgr_srv.h"
 #include "comm_mgr_cmn.h"
-
+#include "system_mgr.h"
+#include "utils.h"
 
 // Resource :
 // https://www.geeksforgeeks.org/socket-programming-in-cc-handling-multiple-clients-on-server-without-multi-threading/
@@ -24,17 +25,35 @@
 static uint16_t *__comm_mgr_srv_master_id_array;
 COMM_MGR_SRV_MASTER *comm_mgr_srv_masters;
 boolean comm_mgr_srv_initialized = FALSE;
+UTILS_SHM_OBJ *sysmgr_shm_obj;
 
 //char buffer[4096]; // TODO :Make a sophesticated data structure
 
 COMM_MGR_SRV_ERR comm_mgr_srv_init() {
 	if (comm_mgr_srv_initialized == TRUE) {
-		COMM_MGR_SRV_ERROR("Comm_mgr_srv already initialized");
+		COMM_MGR_SRV_ERROR("comm_mgr_srv already initialized");
 		return COMM_MGR_SRV_ALREADY_INITIALIZED;
 	}
+    COMM_MGR_SRV_TRACE("Initializing the %s", COMM_MGR_SRV_APP_NAME);
+
+    int shm_obj_size = SYS_MGR_CLIENT_MAX_CLIENTS * sizeof(SYS_MGR_CLIENT_SHM_TBL_ENTRY);
 
 	comm_mgr_srv_masters = (COMM_MGR_SRV_MASTER *)malloc(sizeof(COMM_MGR_SRV_MASTER) * COMM_MGR_SRV_MAX_MASTERS);
 	__comm_mgr_srv_init_master_id();
+
+    // Access the system managers client table shm obj as read only
+    // This will be used to identify the sub-systems which are registered
+    // with system manager and to exclude apps which are not registered.
+    // Unregistered apps cannot use comm_mgr for communication
+    sysmgr_shm_obj = utils_create_shared_obj(SYS_MGR_SHM_ID_SYS_MANAGER_CLIENT_TBL, 
+                                             shm_obj_size,
+                                             UTILS_SHM_FLAGS_RDONLY | UTILS_SHM_FLAGS_SHARED);
+
+    if (comm_mgr_create_registered_apps_list() != COMM_MGR_SRV_SUCCESS) {
+        COMM_MGR_SRV_ERROR("Unable to get the registered apps list");
+        utils_destroy_shared_obj(sysmgr_shm_obj, FALSE);
+        return COMM_MGR_SRV_INIT_FAILURE;
+    }
 
 	comm_mgr_srv_initialized = TRUE;
 	return COMM_MGR_SRV_SUCCESS;
@@ -242,7 +261,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_accept_clients(uint16_t masterID) {
       	/* Check to see if the select call failed.                */
       	/**********************************************************/
       	if (rc < 0) {
-        	COMM_MGR_SRV_ERROR("  select() failed");
+        	COMM_MGR_SRV_ERROR("select() failed");
 			rc = COMM_MGR_SRV_SELECT_ERR;
          	goto cleanup_and_exit;
       	}
@@ -297,7 +316,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_accept_clients(uint16_t masterID) {
 						new_sd = accept(listen_sd, NULL, NULL);
 						if (new_sd < 0) {
 							if (errno != EWOULDBLOCK) {
-								COMM_MGR_SRV_ERROR("  accept() failed");
+								COMM_MGR_SRV_ERROR("accept() failed");
 								end_server = TRUE;
 								rc = COMM_MGR_SRV_SOCKET_ACCEPT_ERR;
 							}
@@ -319,7 +338,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_accept_clients(uint16_t masterID) {
 						/* Add the new incoming connection to the     */
 						/* master read set                            */
 						/**********************************************/
-						COMM_MGR_SRV_DEBUG("  New incoming connection - %d", new_sd);
+						COMM_MGR_SRV_DEBUG("New incoming connection - %d", new_sd);
 						FD_SET(new_sd, &master_set);
 						if (new_sd > max_sd) {
 							max_sd = new_sd;
@@ -336,7 +355,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_accept_clients(uint16_t masterID) {
 				/* existing connection must be readable             */
 				/****************************************************/
 				else {
-					COMM_MGR_SRV_DEBUG("  Descriptor %d is readable", i);
+					COMM_MGR_SRV_DEBUG("Descriptor %d is readable", i);
 					close_conn = FALSE;
 					/*************************************************/
 					/* Receive all incoming data on this socket      */
@@ -352,7 +371,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_accept_clients(uint16_t masterID) {
 						rc = recv(i, buffer, sizeof(buffer), 0);
 						if (rc < 0) {
 							if (errno != EWOULDBLOCK) {
-								COMM_MGR_SRV_ERROR("  recv() failed");
+								COMM_MGR_SRV_ERROR("recv() failed");
 								close_conn = TRUE;
 							}
 							break;
@@ -363,7 +382,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_accept_clients(uint16_t masterID) {
 						/* closed by the client                       */
 						/**********************************************/
 						if (rc == 0) {
-							COMM_MGR_SRV_TRACE("  Connection closed");
+							COMM_MGR_SRV_TRACE("Connection closed");
 							close_conn = TRUE;
 							break;
 						}
@@ -372,7 +391,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_accept_clients(uint16_t masterID) {
 						/* Data was received                          */
 						/**********************************************/
 						len = rc;
-						COMM_MGR_SRV_DEBUG("  %d bytes received", len);
+						COMM_MGR_SRV_DEBUG("%d bytes received", len);
 						COMM_MGR_SRV_DEBUG("Data received : %s", buffer);
 
 // TODO : Implement a State Machine to determine the next steps in Protcol. Refer software_design doc
@@ -428,6 +447,54 @@ cleanup_and_exit:
 	return rc;
 }
 
+/************************************************************************
+    @brief  This function gets the list of registered sub-systems 
+            from the system manager. These sub-systems will have full-access
+            to the functionalties of communication manager and any of its
+            inherited communication systems (example SCOM).
+
+            The user apps are not part of registered apps. They are 
+            maintained by app manager. They will have restricted access,
+            and its upto the descrection of communication manager to
+            grant resources/access to the communication.
+*************************************************************************/
+COMM_MGR_SRV_ERR comm_mgr_create_registered_apps_list() {
+    COMM_MGR_SRV_ERR ret = COMM_MGR_SRV_SUCCESS;
+    SYS_MGR_CLIENT_SHM_TBL_ENTRY sysmgr_shm_obj_entry;
+
+    UTILS_SHM_OBJ_HDR *shm_obj_hdr;
+    
+    shm_obj_hdr = utils_get_shared_obj_hdr(sysmgr_shm_obj->addr);
+    COMM_MGR_SRV_TRACE("shm obj header : magic = 0x%x, refcount = %d, obj_id = %d\n",
+            shm_obj_hdr->magic, shm_obj_hdr->refcount, shm_obj_hdr->obj_id);
+    
+    // Logic : This shm obj should already be created by the system manager.
+    // So check for ref count along with the magic number just to be sure.
+    if(shm_obj_hdr->magic != UTILS_SHM_OBJ_MAGIC_NUM) { 
+        COMM_MGR_SRV_ERROR("Inconsistent shm obj (sysmgr client tbl shm obj). Magic = 0x%x",
+                            shm_obj_hdr->magic);
+        return COMM_MGR_SRV_BAD_SHM_OBJ;
+    }
+
+    // sysmgr sets userdefined with 0x01 when the table is ready to be read.
+    // Wait till then. Should we have a timeout for this ???
+    while(!(shm_obj_hdr->userdefined & 0x01)) {
+        sleep(2);
+    }
+   
+    COMM_MGR_SRV_TRACE("System Manager client shm tbl is ready for read");
+
+    memset(&sysmgr_shm_obj_entry, 0, sizeof(sysmgr_shm_obj_entry));
+    memcpy(&sysmgr_shm_obj_entry, sysmgr_shm_obj->addr, sizeof(sysmgr_shm_obj_entry));
+
+    COMM_MGR_SRV_DEBUG("System Manager Registered apps : ");
+    COMM_MGR_SRV_DEBUG("    - UID : %d, clientID : %d", 
+                                                sysmgr_shm_obj_entry.UID,
+                                                sysmgr_shm_obj_entry.clientID);
+
+    return ret;
+}
+
 /************************************************************************/
 /*			Internal helper functions						    		*/
 /************************************************************************/
@@ -464,10 +531,13 @@ static void __comm_mgr_srv_free_master_id(uint16_t masterID) {
 int main() {
     COMM_MGR_SRV_TRACE("Starting the %s...", COMM_MGR_SRV_APP_NAME);
 	COMM_MGR_SRV_MASTER uds_master;
-    
+   
+    // Initialize logger
     log_lib_init(NULL, LOG_LVL_DEBUG);
 
-	comm_mgr_srv_init();
+	if(comm_mgr_srv_init() != COMM_MGR_SRV_SUCCESS) {
+        return -1;
+    }
 
 /*****************************************************************/
 	memset(&uds_master, 0, sizeof(COMM_MGR_SRV_MASTER));

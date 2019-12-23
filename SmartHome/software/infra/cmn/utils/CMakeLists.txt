@@ -5,7 +5,8 @@ set (LIB_NAME "utils")
 #set (GENERATE_SHARED_LIB ON)
 
 # Set the static and shared libraries on which the executable is dependent
-set(LIBRARY_LIST "logging")                 
+set(LIBRARY_LIST "logging"
+                 "rt") # -lrt is required for shm                 
 
 # Set the source files required
 set (SOURCE_FILE_LIST "shared_mem.c")
@@ -20,8 +21,9 @@ endif(GENERATE_SHARED_LIB)
 # Link any shared or static libraries, if required
 target_link_libraries (${LIB_NAME} LINK_PUBLIC "${LIBRARY_LIST}")
 
-# Add the sub-directories, if any present
-#add_subdirectory ()
-
 # Make sure the compiler can find include files for our library
 target_include_directories (${LIB_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
+# Add the sub-directories, if any present
+add_subdirectory (shared_mem_test)
+

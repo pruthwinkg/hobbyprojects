@@ -1,10 +1,12 @@
 /*******************************************************************************
     Description : Common functions to create shared memories
+    Reference : https://gist.github.com/garcia556/8231e844a90457c99cc72e5add8388e4
 *******************************************************************************/
 
 #include "utils.h"
 #include <sys/mman.h>
 #include <fcntl.h>
+#include <unistd.h>
 #include <stdlib.h>
 
 static void __utils_get_shm_obj_id(uint8_t id, char *buf, uint8_t bufsize);
@@ -179,19 +181,19 @@ int utils_destroy_shared_obj(UTILS_SHM_OBJ *shm_obj, boolean force_delete) {
     if (force_delete == FALSE) {
         utils_update_shared_obj_refcount(shm_obj);
         if (shm_obj->hdr.refcount > 1) {
-            return -1;
+            return -2;
         }
     }
 
     res = munmap(shm_obj->addr, final_shm_obj_size);
     if (res == -1) {
-        return -1;
+        return -3;
     }
 
     __utils_get_shm_obj_id(shm_obj->hdr.obj_id, buf, sizeof(buf));
     fd = shm_unlink(buf);
     if (fd == -1) {
-        return -1;
+        return -4;
     }
 
     memset(shm_obj, 0, sizeof(UTILS_SHM_OBJ)); // Free usually doesnt set to 0

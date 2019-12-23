@@ -2,7 +2,8 @@
 set (EXECUTABLE_NAME "comm_manager") 
 
 # Set the static and shared libraries on which the executable is dependent
-set(LIBRARY_LIST "logging")
+set(LIBRARY_LIST "logging"
+                 "utils")
 
 # Set the source files required
 set(SOURCE_FILE_LIST "comm_mgr_srv.c"

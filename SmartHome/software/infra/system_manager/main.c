@@ -14,17 +14,22 @@
 int main() {
     int status;
     int c_pid;
+    
+    // Initialize logger
+    log_lib_init(NULL, LOG_LVL_DEBUG);
 
-    SYS_MGR_TRACE("Starting system manager....\n");
+    SYS_MGR_TRACE("Starting system manager....");
 
     sysmgr_init_clients();
 
     // Wait for ALL child processes to exit
     while((c_pid = wait(&status)) > 0) {
-        SYS_MGR_DEBUG("pid = %d exited with status %d\n", c_pid, status);
+        SYS_MGR_DEBUG("pid = %d exited with status %d", c_pid, status);
     }
 
     sysmgr_display_client_status();    
+
+    sysmgr_destroy_clients();
 
     return 0;
 }

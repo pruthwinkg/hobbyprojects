@@ -11,8 +11,8 @@
 #include <time.h>
 #include <string.h>
 
-#include "../../../smarthome/smarthome_essentials.h"
-//#include "logging.h"
+#include "smarthome_essentials.h"
+#include "logging.h"
 
 #define UTILS_MAX_SHM_OBJS          (50)
 #define UTILS_SHM_ID_PREFIX         "/UTILS_SHM_ID_"
@@ -33,7 +33,7 @@
 uint8_t __utils_shm_obj_count;
 
 // Shared memory object header (This should be 16 bytes according to spec)
-// Special field : userdefined -> Can be used by any applications i
+// Special field : userdefined -> Can be used by any applications
 // according to its needs. One example is, to detect "in use" of shm obj 
 // to avoid race cases, in multiple write scernios
 typedef struct __attribute__((__packed__)) {
@@ -41,7 +41,7 @@ typedef struct __attribute__((__packed__)) {
     uint32_t    size; // Size of the shm obj addr
     uint16_t    flags; // Properties of the shm obj
     uint8_t     obj_id; // Unique ID to identify the shm obj
-    uint8_t     refcount; // Refcount of processes using this shm obj
+    uint8_t     refcount; // Refcount of processes using this shm obj (Not applicable in RDONLY)
     uint32_t    userdefined; //This can be used by anyone how they want
     uint32_t    reserved; // Reserved for future use
 } UTILS_SHM_OBJ_HDR;

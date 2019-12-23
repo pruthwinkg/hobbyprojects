@@ -1,4 +1,5 @@
-#include "../utils.h"
+#include "utils.h"
+#include <unistd.h>
 
 int main() {
     UTILS_SHM_OBJ *shm_obj;

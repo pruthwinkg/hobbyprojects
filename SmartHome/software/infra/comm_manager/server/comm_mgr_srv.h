@@ -51,9 +51,9 @@ static void __comm_mgr_srv_free_master_id(uint16_t masterID);
 /************************************************************************/
 /*                   Public  functions                                  */
 /************************************************************************/
-COMM_MGR_SRV_ERR comm_mgr_srv_init();
-COMM_MGR_SRV_ERR comm_mgr_srv_destroy();
+COMM_MGR_SRV_ERR comm_mgr_srv_init(void);
+COMM_MGR_SRV_ERR comm_mgr_create_registered_apps_list(void);
+COMM_MGR_SRV_ERR comm_mgr_srv_destroy(void);
 COMM_MGR_SRV_ERR comm_mgr_srv_init_master(COMM_MGR_SRV_MASTER *master);
-
 
 #endif /* INCLUDE_COMM_MGR_H__ */
