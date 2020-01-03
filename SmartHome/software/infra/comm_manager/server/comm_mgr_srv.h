@@ -7,6 +7,7 @@
 
 #include "smarthome_essentials.h"
 #include "logging.h"
+#include "utils.h"
 #include "comm_mgr_srv_enums.h"
 
 #define COMM_MGR_SRV_APP_NAME        "Communication Manager Server"
@@ -23,6 +24,7 @@
 #define COMM_MGR_SRV_GET_MASTER_INDEX(x)    (x & 0x0FFF)
 
 extern boolean comm_mgr_srv_initialized;
+extern UTILS_TASK_HANDLER comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_MAX];
 
 //extern char buffer[4096]; // // TODO :Make a sophesticated data structure
 
@@ -55,5 +57,9 @@ COMM_MGR_SRV_ERR comm_mgr_srv_init(void);
 COMM_MGR_SRV_ERR comm_mgr_create_registered_apps_list(void);
 COMM_MGR_SRV_ERR comm_mgr_srv_destroy(void);
 COMM_MGR_SRV_ERR comm_mgr_srv_init_master(COMM_MGR_SRV_MASTER *master);
+COMM_MGR_SRV_ERR comm_mgr_srv_accept_clients(uint16_t masterID);
+COMM_MGR_SRV_ERR comm_mgr_srv_create_uds_master(uint16_t *masterID);
+void* comm_mgr_srv_uds_request_handler(void *arg);
+void* comm_mgr_srv_uds_response_handler(void *arg);
 
 #endif /* INCLUDE_COMM_MGR_H__ */

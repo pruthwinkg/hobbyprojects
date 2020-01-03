@@ -1,15 +1,12 @@
 #Set the name of the executable
-set (EXECUTABLE_NAME "comm_manager") 
+set (EXECUTABLE_NAME "test_utils_datastructures") 
 
 # Set the static and shared libraries on which the executable is dependent
 set(LIBRARY_LIST "logging"
                  "utils")
 
 # Set the source files required
-set(SOURCE_FILE_LIST "comm_mgr_srv.c"
-                     "comm_mgr_srv_enums_defs.c"
-                     "comm_mgr_srv_uds.c"
-                     "comm_mgr_srv_workers.c")
+set(SOURCE_FILE_LIST "data_structures_test.c")
 
 # Generate the executable
 add_executable (${EXECUTABLE_NAME} ${SOURCE_FILE_LIST})

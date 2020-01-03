@@ -11,6 +11,10 @@
 
 SYS_MGR_CLIENT_STATUS system_mgr_client_status[SYS_MGR_CLIENT_MAX_CLIENTS+1];
 UTILS_SHM_OBJ *sysmgr_shm_obj;
+uint32_t sysmgr_num_of_registered_apps = 0; // whenever there is a change in this value,
+                                            // comm_manager needs to be notified, so that
+                                            // it reads the shm client table again to get the
+                                            // lastest updated list
 
 /*****************************************************************************/
 /*                  Static Function delcaration                              */
@@ -19,6 +23,7 @@ static SYS_MGR_ERR sysmgr_create_shm_obj_client_tbl(void);
 static SYS_MGR_ERR sysmgr_add_shm_obj_client_tbl_entry(SYS_MGR_CLIENTS client); 
 static SYS_MGR_ERR sysmgr_del_shm_obj_client_tbl_entry(SYS_MGR_CLIENTS client); 
 static SYS_MGR_ERR sysmgr_update_shm_obj_hdr(int bitfield);
+static SYS_MGR_ERR sysmgr_update_shm_obj_hdr_validclients(int validclients);
 
 SYS_MGR_ERR sysmgr_init_clients() {
     SYS_MGR_ERR ret = SYS_MGR_SUCCESS;
@@ -62,6 +67,11 @@ SYS_MGR_ERR sysmgr_init_clients() {
         return SYS_MGR_INIT_FAILURE;
     }
 
+    // Update the num of registered apps in the shm obj
+    if(sysmgr_update_shm_obj_hdr_validclients(sysmgr_num_of_registered_apps) != SYS_MGR_SUCCESS) {
+        return SYS_MGR_INIT_FAILURE;
+    }
+
     return ret;
 }
 
@@ -83,6 +93,7 @@ SYS_MGR_ERR sysmgr_start_client(SYS_MGR_CLIENTS client) {
 
         // Add the entry to shm_obj
         sysmgr_add_shm_obj_client_tbl_entry(client);
+        sysmgr_num_of_registered_apps++;
 
     }
     return SYS_MGR_SUCCESS;
@@ -109,7 +120,8 @@ SYS_MGR_ERR sysmgr_destroy_clients() {
         }
         SYS_MGR_TRACE("Successfully deleted the client %d, process name %s", 
                                             system_mgr_client_tbl[i].clientID,
-                                            system_mgr_client_tbl[i].clientName);        
+                                            system_mgr_client_tbl[i].clientName); 
+
     }
 
     // Finally destroy the shm obj. Since sysmgr is the owner no need to force delete it
@@ -122,6 +134,12 @@ SYS_MGR_ERR sysmgr_destroy_clients() {
     return SYS_MGR_SUCCESS;
 }
 
+/*
+    @brief This function is used to stop(kill) a running client. This function can be
+           called from sysmgr_destroy_clients() when sys manager wants to destroy all the
+           clients (during system reboot/shutdown) OR when the sys manager feels that it
+           needs to stop a particular client on the decision made by sys manager
+*/
 SYS_MGR_ERR sysmgr_stop_client(SYS_MGR_CLIENTS client) {
     SYS_MGR_TRACE("NOT YET IMPLEMENTED...%d", client);
     SYS_MGR_ERR ret = SYS_MGR_SUCCESS;    
@@ -133,11 +151,26 @@ SYS_MGR_ERR sysmgr_stop_client(SYS_MGR_CLIENTS client) {
         return ret; 
     }
 
+    sysmgr_num_of_registered_apps--;
+
     return SYS_MGR_SUCCESS;
 }
 
 SYS_MGR_ERR sysmgr_restart_client(SYS_MGR_CLIENTS client) {
-    SYS_MGR_TRACE("%d\n", client);
+    SYS_MGR_TRACE("NOT YET IMPLEMENTED...%d", client);
+    SYS_MGR_ERR ret = SYS_MGR_SUCCESS;    
+
+    ret = sysmgr_del_shm_obj_client_tbl_entry(client);
+    if(ret != SYS_MGR_SUCCESS) {
+        SYS_MGR_ERROR("Failed to delete the shm obj entry for clientID %d",
+                        client);
+        return ret; 
+    }
+   
+    sysmgr_num_of_registered_apps--;
+  
+    // Start the app again
+
     return SYS_MGR_SUCCESS;
 }
 
@@ -174,6 +207,8 @@ static SYS_MGR_ERR sysmgr_create_shm_obj_client_tbl() {
         return SYS_MGR_CLIENT_SHM_OBJ_CREATE_ERR;
     }
 
+    memset(sysmgr_shm_obj->addr, 0, shm_obj_size);
+
     // To indicate to other system which is using this shm obj ID that,
     // sys mgr has created this. Other proccess must wait till flag is set.
     if(sysmgr_update_shm_obj_hdr(SYS_MGR_SHM_OBJ_USERDEFINED_CREATED) != SYS_MGR_SUCCESS) {
@@ -183,7 +218,7 @@ static SYS_MGR_ERR sysmgr_create_shm_obj_client_tbl() {
     return SYS_MGR_SUCCESS;
 }
 
-// We will overide the "userdefined" field in the header for our own purpose.
+// We will overide the "userdefined.field1" field in the header for our own purpose.
 // Its a uint32_t field. Will use it in a bitmap fashion.
 // Used to update the user field in the shm obj (Override)
 static SYS_MGR_ERR sysmgr_update_shm_obj_hdr(int bitfield) {
@@ -196,9 +231,24 @@ static SYS_MGR_ERR sysmgr_update_shm_obj_hdr(int bitfield) {
         return SYS_MGR_CLIENT_SHM_OBJ_BAD_OBJ;
     }
 
-    shm_obj_hdr->userdefined |= bitfield;
+    shm_obj_hdr->userdefined.field1 |= bitfield;
 
     return SYS_MGR_SUCCESS;
+}
+
+// Overriding the "userdefined.field2" for storing the number of valid regsitered clients
+static SYS_MGR_ERR sysmgr_update_shm_obj_hdr_validclients(int validclients) {
+    UTILS_SHM_OBJ_HDR *shm_obj_hdr = utils_get_shared_obj_hdr(sysmgr_shm_obj->addr);
+    SYS_MGR_TRACE("shm obj header : magic = 0x%x, refcount = %d, obj_id = %d",
+                    shm_obj_hdr->magic, shm_obj_hdr->refcount, shm_obj_hdr->obj_id);
+
+    if (shm_obj_hdr == NULL) {
+        SYS_MGR_ERROR("Unable to get the shm obj hdr. Bad shm obj");
+        return SYS_MGR_CLIENT_SHM_OBJ_BAD_OBJ;
+    }
+    shm_obj_hdr->userdefined.field2 = validclients;
+
+    return SYS_MGR_SUCCESS;  
 }
 
 static SYS_MGR_ERR sysmgr_add_shm_obj_client_tbl_entry(SYS_MGR_CLIENTS client) {   

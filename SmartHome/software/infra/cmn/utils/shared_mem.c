@@ -114,8 +114,10 @@ UTILS_SHM_OBJ* utils_create_shared_obj(uint16_t shm_id, uint16_t size, int flags
         shm_obj->hdr.flags = flags;
         shm_obj->hdr.refcount = 1;
         shm_obj->hdr.size = size;
-        shm_obj->hdr.userdefined = 0; // Upto apps to use
-        shm_obj->hdr.reserved = 0; // Upto apps to use
+        shm_obj->hdr.reserved1 = 0; // For future use
+        shm_obj->hdr.reserved2 = 0; // For future use
+        shm_obj->hdr.reserved3 = 0; // For future use
+        memset(&(shm_obj->hdr.userdefined), 0, sizeof(UTILS_SHM_OBJ_USER_HDR)); // Upto apps to use
         shm_obj->addr = addr + UTILS_SHM_OBJ_HDR_SIZE; // Correct the offset
         // On success increase the count
         __utils_shm_obj_count++;

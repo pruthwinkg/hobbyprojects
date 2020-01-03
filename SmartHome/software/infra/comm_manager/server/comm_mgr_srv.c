@@ -13,6 +13,7 @@
 
 #include "comm_mgr_srv.h"
 #include "comm_mgr_cmn.h"
+#include "comm_mgr_srv_protocol.h"
 #include "system_mgr.h"
 #include "utils.h"
 
@@ -26,6 +27,10 @@ static uint16_t *__comm_mgr_srv_master_id_array;
 COMM_MGR_SRV_MASTER *comm_mgr_srv_masters;
 boolean comm_mgr_srv_initialized = FALSE;
 UTILS_SHM_OBJ *sysmgr_shm_obj;
+
+uint16_t comm_mgr_reg_apps_num = 0; // Total number of valid registered apps
+COMM_MGR_SRV_REG_APPS *comm_mgr_reg_apps_list;
+UTILS_TASK_HANDLER comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_MAX];
 
 //char buffer[4096]; // TODO :Make a sophesticated data structure
 
@@ -48,6 +53,9 @@ COMM_MGR_SRV_ERR comm_mgr_srv_init() {
     sysmgr_shm_obj = utils_create_shared_obj(SYS_MGR_SHM_ID_SYS_MANAGER_CLIENT_TBL, 
                                              shm_obj_size,
                                              UTILS_SHM_FLAGS_RDONLY | UTILS_SHM_FLAGS_SHARED);
+    // Note : No need to check for the SYS_MGR_SHM_OBJ_USERDEFINED_CREATED, since it is
+    // guranteed that comm_manager is started post shm obj creation by sys manager
+    // It might be required in the case where comm_manager is started independent of sys manager
 
     if (comm_mgr_create_registered_apps_list() != COMM_MGR_SRV_SUCCESS) {
         COMM_MGR_SRV_ERROR("Unable to get the registered apps list");
@@ -398,7 +406,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_accept_clients(uint16_t masterID) {
 // TODO : Create another file for State Machine and all its functions
 
 
-#if 0 // TODO : Enable it Later
+#if 1 // TODO : Enable it Later
 						/**********************************************/
 						/* Echo the data back to the client           */
 						/**********************************************/
@@ -457,10 +465,17 @@ cleanup_and_exit:
             maintained by app manager. They will have restricted access,
             and its upto the descrection of communication manager to
             grant resources/access to the communication.
+
+            Also, the sys manager can revoke the special status of infra
+            modules in case it feels to do. Then sys manager will send
+            a message to the comm_manager via UDS, asking it to read the
+            table again to get the updated list. This is applicable even
+            in case of addition of new modules/restart of a module. The comm_manager
+            then has to call this function again and update it local list
 *************************************************************************/
 COMM_MGR_SRV_ERR comm_mgr_create_registered_apps_list() {
     COMM_MGR_SRV_ERR ret = COMM_MGR_SRV_SUCCESS;
-    SYS_MGR_CLIENT_SHM_TBL_ENTRY sysmgr_shm_obj_entry;
+    SYS_MGR_CLIENT_SHM_TBL_ENTRY *sysmgr_shm_obj_entry;
 
     UTILS_SHM_OBJ_HDR *shm_obj_hdr;
     
@@ -477,20 +492,46 @@ COMM_MGR_SRV_ERR comm_mgr_create_registered_apps_list() {
     }
 
     // sysmgr sets userdefined with 0x01 when the table is ready to be read.
-    // Wait till then. Should we have a timeout for this ???
-    while(!(shm_obj_hdr->userdefined & 0x01)) {
+    // Wait till then. Should we have a timeout for this ??
+    // 99% of the time, it is always ready for use
+    while(!(shm_obj_hdr->userdefined.field1 & SYS_MGR_SHM_OBJ_USERDEFINED_READY)) {
         sleep(2);
     }
    
     COMM_MGR_SRV_TRACE("System Manager client shm tbl is ready for read");
 
-    memset(&sysmgr_shm_obj_entry, 0, sizeof(sysmgr_shm_obj_entry));
-    memcpy(&sysmgr_shm_obj_entry, sysmgr_shm_obj->addr, sizeof(sysmgr_shm_obj_entry));
+    // Free the local list if it is allocated before. (For update case)
+    if (comm_mgr_reg_apps_list) {
+        free(comm_mgr_reg_apps_list);
+    }
 
-    COMM_MGR_SRV_DEBUG("System Manager Registered apps : ");
-    COMM_MGR_SRV_DEBUG("    - UID : %d, clientID : %d", 
-                                                sysmgr_shm_obj_entry.UID,
-                                                sysmgr_shm_obj_entry.clientID);
+    comm_mgr_reg_apps_num = shm_obj_hdr->userdefined.field2; // Get the number of valid registered apps
+    //copy the registered apps into a local copy for easier access. Copy only valid apps
+    comm_mgr_reg_apps_list = (COMM_MGR_SRV_REG_APPS*)malloc(
+                        comm_mgr_reg_apps_num * sizeof(COMM_MGR_SRV_REG_APPS));
+
+
+    sysmgr_shm_obj_entry = (SYS_MGR_CLIENT_SHM_TBL_ENTRY *)sysmgr_shm_obj->addr;
+    // First iterate over the shm obj to get the number of valid clients.
+    COMM_MGR_SRV_DEBUG("System Manager Registered apps total %d :", comm_mgr_reg_apps_num);
+    int index = 0;
+    for (uint16_t i = 0; i < SYS_MGR_CLIENT_MAX_CLIENTS; i++) {
+        if (sysmgr_shm_obj_entry->valid == FALSE) {
+            sysmgr_shm_obj_entry++;
+            continue;
+        }
+
+        COMM_MGR_SRV_DEBUG("    - UID : %d, clientID : %d", 
+                                                    sysmgr_shm_obj_entry->UID,
+                                                    sysmgr_shm_obj_entry->clientID);
+
+        comm_mgr_reg_apps_list[index].UID = sysmgr_shm_obj_entry->UID;
+        comm_mgr_reg_apps_list[index].clientID = sysmgr_shm_obj_entry->clientID;
+        comm_mgr_reg_apps_list[index].priority = 0; // Will come back here later
+
+        index++;
+        sysmgr_shm_obj_entry++;
+    }
 
     return ret;
 }
@@ -530,8 +571,8 @@ static void __comm_mgr_srv_free_master_id(uint16_t masterID) {
 
 int main() {
     COMM_MGR_SRV_TRACE("Starting the %s...", COMM_MGR_SRV_APP_NAME);
-	COMM_MGR_SRV_MASTER uds_master;
-   
+    COMM_MGR_SRV_ERR ret = COMM_MGR_SRV_SUCCESS;
+
     // Initialize logger
     log_lib_init(NULL, LOG_LVL_DEBUG);
 
@@ -539,22 +580,24 @@ int main() {
         return -1;
     }
 
-/*****************************************************************/
-	memset(&uds_master, 0, sizeof(COMM_MGR_SRV_MASTER));
-	uds_master.masterAf = COMM_MGR_SRV_IPC_AF_UNIX_SOCK_STREAM;
-	uds_master.reuseaddr = TRUE;
-	uds_master.nonblockingIO = TRUE;
-	uds_master.srvInactivityTimeOut = -1; // Wait even if no client activity
-    if (comm_mgr_srv_init_master(&uds_master) != COMM_MGR_SRV_SUCCESS) {
-		goto err;
-	}    
-    COMM_MGR_SRV_TRACE("%s ready to communicate", COMM_MGR_SRV_APP_NAME);
-	
-	comm_mgr_srv_accept_clients(uds_master.__masterID);
+    // Create each master instance. If multiple master instances needs to be created
+    // call create for each first
+    uint16_t uds_masterID = 0;
+    ret = comm_mgr_srv_create_uds_master(&uds_masterID);
+    if (ret != COMM_MGR_SRV_SUCCESS) {
+        __comm_mgr_srv_free_master_id(uds_masterID);
+    }
+   
+  //  comm_mgr_srv_uds_request_handler(comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_UDS_REQ].arg);
 
-	__comm_mgr_srv_free_master_id(uds_master.__masterID);
 
-/*****************************************************************/
+    // Now start the various masters
+    if(utils_create_task_handlers(COMM_MGR_SRV_TASK_ID_MAX, comm_mgr_srv_workers) < 0) {
+        goto err;
+    }
+
+    // Wait for all the master instances to finish their tasks
+    utils_wait_task_handlers(COMM_MGR_SRV_TASK_ID_MAX, comm_mgr_srv_workers);
 err:
 	comm_mgr_srv_destroy();
     return 0;
