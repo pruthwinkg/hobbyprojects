@@ -26,6 +26,8 @@
 extern boolean comm_mgr_srv_initialized;
 extern UTILS_TASK_HANDLER comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_MAX];
 
+typedef COMM_MGR_SRV_ERR (*comm_mgr_srv_recv_cb)(UTILS_DS_ID, char *, uint32_t);
+
 //extern char buffer[4096]; // // TODO :Make a sophesticated data structure
 
 // This structure defines the Master (Server)
@@ -35,9 +37,11 @@ typedef struct {
     boolean reuseaddr;              /* In */
     boolean nonblockingIO;          /* In */
     int srvInactivityTimeOut;       /* In */ // -1 to wait infinite, valid range (1 - INT_MAX) mins
+    UTILS_DS_ID recvDSID;           /* In */  // DS ID for storing the recived data
+    comm_mgr_srv_recv_cb recv_cb;   /* In */ // Call back function for Recieve data
     int __masterFd;                 /* Out */
     boolean __masterReady;          /* Out */ //Useful in multi-threaded environment.Protect by mutex if required 
-    uint16_t __masterID;            /* Out */  // To idetify the Master 
+    uint16_t __masterID;            /* Out */  // To idetify the Master
 } COMM_MGR_SRV_MASTER;
 
 
@@ -61,5 +65,8 @@ COMM_MGR_SRV_ERR comm_mgr_srv_accept_clients(uint16_t masterID);
 COMM_MGR_SRV_ERR comm_mgr_srv_create_uds_master(uint16_t *masterID);
 void* comm_mgr_srv_uds_request_handler(void *arg);
 void* comm_mgr_srv_uds_response_handler(void *arg);
+COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_recv_data(UTILS_DS_ID id, char *data, uint32_t len);
+COMM_MGR_SRV_ERR comm_mgr_srv_uds_res_process_events(boolean isLocalMode, uint32_t event);
+void comm_mgr_srv_uds_res_register_events(uint8_t taskID);
 
 #endif /* INCLUDE_COMM_MGR_H__ */

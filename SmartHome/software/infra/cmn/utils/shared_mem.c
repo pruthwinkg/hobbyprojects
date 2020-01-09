@@ -52,7 +52,7 @@ UTILS_SHM_OBJ* utils_create_shared_obj(uint16_t shm_id, uint16_t size, int flags
 	// This check is very important for data consistency. Else everything
 	// will go for a toss
 	if (sizeof(UTILS_SHM_OBJ_HDR) != UTILS_SHM_OBJ_HDR_SIZE) {
-		UTILS_LOG_TRACE("Shm obj header size is not equal to %d. Aborting\n", UTILS_SHM_OBJ_HDR_SIZE);
+		UTILS_LOG_TRACE("Shm obj header size is not equal to %ld. Aborting\n", UTILS_SHM_OBJ_HDR_SIZE);
 		return NULL;
 	}
 

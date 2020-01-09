@@ -399,14 +399,13 @@ COMM_MGR_SRV_ERR comm_mgr_srv_accept_clients(uint16_t masterID) {
 						/* Data was received                          */
 						/**********************************************/
 						len = rc;
-						COMM_MGR_SRV_DEBUG("%d bytes received", len);
-						COMM_MGR_SRV_DEBUG("Data received : %s", buffer);
-
+						COMM_MGR_SRV_DEBUG("Data received : %s, len : %d", buffer, len);
+                        master->recv_cb(master->recvDSID ,buffer, len);
 // TODO : Implement a State Machine to determine the next steps in Protcol. Refer software_design doc
 // TODO : Create another file for State Machine and all its functions
 
 
-#if 1 // TODO : Enable it Later
+#if 0 // TODO : Enable it Later
 						/**********************************************/
 						/* Echo the data back to the client           */
 						/**********************************************/
@@ -592,12 +591,13 @@ int main() {
 
 
     // Now start the various masters
-    if(utils_create_task_handlers(COMM_MGR_SRV_TASK_ID_MAX, comm_mgr_srv_workers) < 0) {
+    if(utils_task_handlers_create(COMM_MGR_SRV_TASK_ID_MAX, comm_mgr_srv_workers, 
+                                COMM_MGR_SRV_LOCAL_EVENT_MAX, COMM_MGR_SRV_GLOBAL_EVENT_MAX) < 0) {
         goto err;
     }
 
     // Wait for all the master instances to finish their tasks
-    utils_wait_task_handlers(COMM_MGR_SRV_TASK_ID_MAX, comm_mgr_srv_workers);
+    utils_task_handlers_wait(COMM_MGR_SRV_TASK_ID_MAX, comm_mgr_srv_workers);
 err:
 	comm_mgr_srv_destroy();
     return 0;

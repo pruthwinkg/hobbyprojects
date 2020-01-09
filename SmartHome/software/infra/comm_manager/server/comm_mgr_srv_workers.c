@@ -13,12 +13,15 @@ UTILS_TASK_HANDLER comm_mgr_srv_workers[] =
         .handler = comm_mgr_srv_uds_request_handler,
         .attr = NULL,
         .arg = NULL,
+        .eventEnable = FALSE,
     },
     {
         .taskID = COMM_MGR_SRV_TASK_ID_UDS_RES,
         .handler = comm_mgr_srv_uds_response_handler,
         .attr = NULL,
         .arg = NULL,
+        .eventEnable = TRUE,
+        .reg_event_cb = comm_mgr_srv_uds_res_register_events,
     }
 
 };
