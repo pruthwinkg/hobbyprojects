@@ -37,6 +37,14 @@ function run_make_all_with_testcode() {
     make all  
 }
 
+function run_make_all_with_testcode_and_debug() {
+    mkdir $CMAKE_DIR
+    cd $CMAKE_DIR
+    cmake -DEnableTestCode=true -DCMAKE_BUILD_TYPE=Debug ..
+    make clean
+    make all  
+}
+
 option="${1}" 
 case ${option} in 
    -C) CMAKE_DIR="${2}" 
@@ -64,7 +72,12 @@ case ${option} in
       echo "make all directory is $CMAKE_DIR"
       run_make_all_with_testcode 
       ;;
-  
+   -Gt) CMAKE_DIR="${2}"
+      echo "make all directory is $CMAKE_DIR"
+      run_make_all_with_testcode_and_debug
+      ;;
+
+
    *)  
    printf "`basename ${0}`:usage:
                 [-C <build dir> (Generate cmake files)] 
