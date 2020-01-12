@@ -66,6 +66,10 @@
 
 #define UTILS_TASK_HANDLER_EVENT_UNINTERESTED_TASK      (0xFFFFFFFF)
 
+/* Some Helper Macros for apps */
+#define UTILS_TASK_HANDLER_EVENT_IS_GLOBAL(ev)          ((ev & UTILS_TASK_HANDLER_EVENT_MODE) ? TRUE:FALSE)
+#define UTILS_TASK_HANDLER_EVENT_IS_HIGH_PRIO(ev)       ((ev & UTILS_TASK_HANDLER_EVENT_PRIO) ? TRUE:FALSE)
+
 // Function pointer for task handling
 typedef void *(*utils_task_handler)(void *);
 typedef void (*utils_task_handler_register_events_cb)(uint8_t taskID);

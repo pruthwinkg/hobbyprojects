@@ -25,7 +25,7 @@ void *func1(void *arg) {
     utils_task_handlers_send_event(TRUE, TEST_LOCAL_EVENT_0, FALSE);    
     sleep(2);
     printf("Sending event %d\n", TEST_LOCAL_EVENT_2);
-    utils_task_handlers_send_event(TRUE, TEST_LOCAL_EVENT_2, FALSE);
+    utils_task_handlers_send_event(TRUE, TEST_LOCAL_EVENT_2, TRUE); // High priority event
     sleep(2);
     printf("Sending event %d\n", TEST_LOCAL_EVENT_3);
     utils_task_handlers_send_event(TRUE, TEST_LOCAL_EVENT_3, FALSE); 
@@ -51,7 +51,12 @@ void *func2(void *arg) {
         eventsRead = utils_task_handlers_get_events(eventList, eventListSize);
         printf("%s : Num of events read = %d\n", __func__, eventsRead);
         for (uint16_t i = 0; i < eventsRead; i++) {
-            printf("%s : event = 0x%x\n", __func__, eventList[i]);
+            if(UTILS_TASK_HANDLER_EVENT_IS_GLOBAL(eventList[i])) {
+                printf("%s : Received a Global event = 0x%0x\n", __func__, eventList[i]);
+            } else {                
+                printf("%s : Received a local event = 0x%x with priority = %s\n", 
+               __func__, eventList[i], UTILS_TASK_HANDLER_EVENT_IS_HIGH_PRIO(eventList[i]) ? "HIGH":"LOW");
+            }
         }
         sleep(2);
         printf("Sending event %d\n", TEST_LOCAL_EVENT_0);
@@ -72,8 +77,12 @@ void *func3(void *arg) {
         printf("%s : Waiting for events\n", __func__);
         eventsRead = utils_task_handlers_get_events(eventList, eventListSize);
         printf("%s : Num of events read = %d\n", __func__, eventsRead);
-        for (uint16_t i = 0; i < eventsRead; i++) {
-            printf("%s : event = 0x%x\n", __func__, eventList[i]);
+        for (uint16_t i = 0; i < eventsRead; i++) {           
+            if(UTILS_TASK_HANDLER_EVENT_IS_GLOBAL(eventList[i])) {
+                printf("%s : Received a Global event = 0x%0x\n", __func__, eventList[i]);
+            } else { 
+                printf("%s : Received a local event = 0x%x\n", __func__, eventList[i]);
+            }           
         }
         sleep(2);
         printf("Sending event %d\n", TEST_LOCAL_EVENT_2);
@@ -95,7 +104,11 @@ void *func4(void *arg) {
         eventsRead = utils_task_handlers_get_events(eventList, eventListSize);
         printf("%s : Num of events read = %d\n", __func__, eventsRead);
         for (uint16_t i = 0; i < eventsRead; i++) {
-            printf("%s : event = 0x%x\n", __func__, eventList[i]);
+            if(UTILS_TASK_HANDLER_EVENT_IS_GLOBAL(eventList[i])) {
+                printf("%s : Received a Global event = 0x%0x\n", __func__, eventList[i]);
+            } else { 
+                printf("%s : Received a local event = 0x%x\n", __func__, eventList[i]);
+            }          
         }
         sleep(2);
         printf("Sending event %d\n", TEST_LOCAL_EVENT_0);

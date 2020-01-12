@@ -574,7 +574,12 @@ static int __utils_task_handlers_update_local_event_queue(boolean isLocalMode, u
         }
         
         if (isLocalMode == TRUE) {
-            eventHandle->__eventQueue[free_slot] = UTILS_TASK_HANDLER_EVENT_ID | event;
+            if (isHighPrio == TRUE) { // Priority is only for local events
+                eventHandle->__eventQueue[free_slot] = UTILS_TASK_HANDLER_EVENT_ID | \
+                                                      UTILS_TASK_HANDLER_EVENT_PRIO | event;
+            } else {
+                eventHandle->__eventQueue[free_slot] = UTILS_TASK_HANDLER_EVENT_ID | event;
+            }
         } else {
             // Mark the event as Global event
             // Bit 17 = 1 is global
@@ -616,6 +621,13 @@ static uint32_t __utils_task_handlers_get_event_index(boolean isLocalMode, uint1
     // For local events, 0 can never be the slot, since it is reserved for global
     *free_slot = 0; 
     uint16_t start = UTILS_TASK_HANDLER_EVENT_QUEUE_LOCAL_BEGIN;
+
+    // Note : If an event is sent as High Prio by Task A, and the same event is sent as
+    //   low prio by task B, then we should not add twice for the same event.
+    // Rules : 1) If a High Prio already exists, ignore the current low prio
+    //         2) If a low prio already exists, then replace it with high prio in the correct slot
+    //         3) In all other cases, add the event with prio passed by the task or ignore it
+   
     if (isHighPrio == FALSE) { // Low priority event
         start += eventHandle->__eventQueueHighPrioSize;
         // In case if the full queue is allocated for highPrio events, then there wont
@@ -624,14 +636,43 @@ static uint32_t __utils_task_handlers_get_event_index(boolean isLocalMode, uint1
             start = UTILS_TASK_HANDLER_EVENT_QUEUE_LOCAL_BEGIN;
         }
     }
-    for(uint16_t i = start; i < eventHandle->__eventQueueSize; i++) {
+
+    for (uint16_t i = UTILS_TASK_HANDLER_EVENT_QUEUE_LOCAL_BEGIN; i < eventHandle->__eventQueueSize; i++) {
+        // Find correct free slots while iterating the entire queue
         if((*free_slot == 0) && (eventHandle->__eventQueue[i] == UTILS_TASK_HANDLER_NO_EVENT)) {
-            *free_slot = i; // Get the first available free slot     
+            if (isHighPrio == TRUE) { // Current event is high prio
+                *free_slot = i; // Get the first available free slot
+            } else { // current event is low prio
+                if (i >= start) { // Use the low prio slots
+                    *free_slot = i; // Get the first available free slot
+                }
+            }
         }
+
+        //Refer the rules mentioned above for this logic. 
+        // We have to worry, only when an event already exists. Then, act according to the above rules
         if((eventHandle->__eventQueue[i] & UTILS_TASK_HANDLER_EVENT_MASK) == event) {
-            return i;
+            if ((eventHandle->__eventQueue[i] & UTILS_TASK_HANDLER_EVENT_PRIO)) { // If a High prio already exists (Rule 1)
+                return i; // Ignore the current event (both high or low)
+            } else { // low prio exists
+                 if (isHighPrio == FALSE) { // Current event is also low prio, ignore current
+                    return i;
+                 } else { // Current event is high and a low prio exists, replace it (Rule 2)
+                     if (*free_slot == 0) { // If a free_slot is not yet found, just replace it
+                         eventHandle->__eventQueue[i] = UTILS_TASK_HANDLER_EVENT_ID | \
+                                                        UTILS_TASK_HANDLER_EVENT_PRIO | event;
+                         return i;                                                        
+                     } else { // If a better free_slot id found for the high prio event, delete currrent and create new
+                         eventHandle->__eventQueue[i] = UTILS_TASK_HANDLER_NO_EVENT;
+                         eventHandle->__eventQueue[*free_slot] = UTILS_TASK_HANDLER_EVENT_ID | \
+                                                         UTILS_TASK_HANDLER_EVENT_PRIO | event;
+                        return *free_slot;                                                         
+                     }
+                 }
+            }
         }
     }
+
     return UTILS_TASK_HANDLER_NO_EVENT;
 }
 
