@@ -230,7 +230,7 @@ int utils_task_handlers_send_event(boolean isLocalMode,
         }
 
         if (__gEventQueue[free_slot] == UTILS_TASK_HANDLER_NO_EVENT) { // Double check
-            __gEventQueue[free_slot] = UTILS_TASK_HANDLER_EVENT_ID | event;
+            __gEventQueue[free_slot] = UTILS_TASK_HANDLER_EVENT_ID | UTILS_TASK_HANDLER_EVENT_MODE | event;
             // Reset the number of global event readers to the reference value
             __gEventQueueReaders[free_slot] = __gEventQueueReadersReference;
         }
@@ -547,7 +547,12 @@ static int __utils_task_handlers_update_local_event_queue(boolean isLocalMode, u
             }
         }
 
-        UTILS_TASK_HANDLER *task = __utils_task_handlers_get_task(taskList[i]);
+        UTILS_TASK_HANDLER *task = NULL;
+        if (isLocalMode == TRUE) {
+            task = __utils_task_handlers_get_task(taskList[i]);
+        } else { // For global event
+            task = &__utilsWorkerList[i];  
+        }
         UTILS_TASK_HANDLER_EVENTS *eventHandle = task->events;
       
         // Skip if the event mechanism is disabled for the task

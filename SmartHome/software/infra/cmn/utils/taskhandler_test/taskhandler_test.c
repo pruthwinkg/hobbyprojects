@@ -29,7 +29,13 @@ void *func1(void *arg) {
     sleep(2);
     printf("Sending event %d\n", TEST_LOCAL_EVENT_3);
     utils_task_handlers_send_event(TRUE, TEST_LOCAL_EVENT_3, FALSE); 
-    
+  
+    // Every task should receive this, even if not registered for this event
+    sleep(2);
+    printf("Sending Global event %d\n", TEST_GLOBAL_EVENT_0);
+    utils_task_handlers_send_event(FALSE, TEST_GLOBAL_EVENT_0, FALSE); 
+   
+
     return (void*)1;
 }
 
