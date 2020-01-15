@@ -25,6 +25,9 @@
 #define UTILS_LOG_TRACE             printf
 #define UTILS_LOG_ERROR             printf
 
+extern boolean utils_task_handler_initialized;
+typedef uint32_t UTILS_EVENT_ID;
+
 /*
     Event format : 32 bits
       16 bits    (Special flags)  |  16 bit (event)
@@ -69,10 +72,11 @@
 /* Some Helper Macros for apps */
 #define UTILS_TASK_HANDLER_EVENT_IS_GLOBAL(ev)          ((ev & UTILS_TASK_HANDLER_EVENT_MODE) ? TRUE:FALSE)
 #define UTILS_TASK_HANDLER_EVENT_IS_HIGH_PRIO(ev)       ((ev & UTILS_TASK_HANDLER_EVENT_PRIO) ? TRUE:FALSE)
+#define UTILS_TASK_HANDLER_EVENT_GET(ev)                (ev & UTILS_TASK_HANDLER_EVENT_MASK)
 
 // Function pointer for task handling
 typedef void *(*utils_task_handler)(void *);
-typedef void (*utils_task_handler_register_events_cb)(uint8_t taskID);
+typedef void (*utils_task_handler_register_events_cb)(uint32_t taskID);
 
 // This structure is specific for each task (local)
 // Single Reader - Multiple Writers
@@ -135,7 +139,7 @@ int utils_task_handlers_wait(int num_workers, UTILS_TASK_HANDLER *workers);
 void utils_task_handlers_register_event(uint16_t event, uint32_t taskID);
 void utils_task_handlers_unregister_event(uint16_t event, uint32_t taskID);
 int utils_task_handlers_send_event(boolean isLocalMode, uint16_t event, boolean isHighPrio);
-uint16_t utils_task_handlers_get_events(uint32_t *eventList, uint16_t eventListSize);
+uint16_t utils_task_handlers_get_events(UTILS_EVENT_ID *eventList, uint16_t eventListSize);
 UTILS_TASK_HANDLER_STATUS* utils_task_handler_get_taskInfo(void);
 
 

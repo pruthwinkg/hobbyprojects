@@ -32,8 +32,11 @@ BEGIN_ENUM(COMM_MGR_SRV_ERR) {
     ADD_ENUM(COMM_MGR_SRV_BAD_SHM_OBJ)
     ADD_ENUM(COMM_MGR_SRV_PROTO_INIT_ERR)
     ADD_ENUM(COMM_MGR_SRV_PROTO_INVALID_STATE)
+    ADD_ENUM(COMM_MGR_SRV_PROTO_BAD_PACKET)
     ADD_ENUM(COMM_MGR_SRV_OUT_OF_MEMORY)
+    ADD_ENUM(COMM_MGR_SRV_RECV_DSID_ERR)
     ADD_ENUM(COMM_MGR_SRV_UNKNOWN_EVENT)
+    ADD_ENUM(COMM_MGR_SRV_UDS_MASTER_INIT_ERR)
 } END_ENUM(COMM_MGR_SRV_ERR);
 
 
@@ -47,20 +50,31 @@ BEGIN_ENUM(COMM_MGR_SRV_IPC_AF) {
 
 BEGIN_ENUM(COMM_MGR_SRV_TASK_ID) {
     ADD_ENUM_STR(COMM_MGR_SRV_TASK_ID_UDS_REQ, "UDS request handler")
-    ADD_ENUM_STR(COMM_MGR_SRV_TASK_ID_UDS_RES, "UDS response handler")
+    ADD_ENUM_STR(COMM_MGR_SRV_TASK_ID_UDS_RES, "UDS process handler")
+    ADD_ENUM_STR(COMM_MGR_SRV_TASK_ID_UDS_RES_STATIC_UID, "UDS Static UID response handler")
+    ADD_ENUM_STR(COMM_MGR_SRV_TASK_ID_UDS_RES_DYNAMIC_UID, "UDS Dynamic UID response handler")
     ADD_ENUM(COMM_MGR_SRV_TASK_ID_MAX)
 } END_ENUM(COMM_MGR_SRV_TASK_ID);
 
-// These events are used by various workers of comm mgr server 
+
+/********************************************************************************/
+/*                      Event functionality (using utils library)               */
+/********************************************************************************/
+// These events are used by various workers of comm mgr server
+
+// Local events are targeted events. They need to be registered by the receiving tasks
 BEGIN_ENUM(COMM_MGR_SRV_LOCAL_EVENT) {
     ADD_ENUM_STR(COMM_MGR_SRV_LOCAL_EVENT_RECV_READY, "Data Received from clients")
     ADD_ENUM(COMM_MGR_SRV_LOCAL_EVENT_MAX)
 } END_ENUM(COMM_MGR_SRV_LOCAL_EVENT);
 
+// These events are global. No registration is required. Delievred to all workers
+// as long as event mechanism is enabled for those tasks
 BEGIN_ENUM(COMM_MGR_SRV_GLOBAL_EVENT) {
     ADD_ENUM(COMM_MGR_SRV_GLOBAL_EVENT_MAX)
 } END_ENUM(COMM_MGR_SRV_GLOBAL_EVENT);
 
+/********************************************************************************/
 
 
 

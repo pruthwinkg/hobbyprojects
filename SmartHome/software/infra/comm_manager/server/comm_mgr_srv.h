@@ -62,11 +62,5 @@ COMM_MGR_SRV_ERR comm_mgr_create_registered_apps_list(void);
 COMM_MGR_SRV_ERR comm_mgr_srv_destroy(void);
 COMM_MGR_SRV_ERR comm_mgr_srv_init_master(COMM_MGR_SRV_MASTER *master);
 COMM_MGR_SRV_ERR comm_mgr_srv_accept_clients(uint16_t masterID);
-COMM_MGR_SRV_ERR comm_mgr_srv_create_uds_master(uint16_t *masterID);
-void* comm_mgr_srv_uds_request_handler(void *arg);
-void* comm_mgr_srv_uds_response_handler(void *arg);
-COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_recv_data(UTILS_DS_ID id, char *data, uint32_t len);
-COMM_MGR_SRV_ERR comm_mgr_srv_uds_res_process_events(boolean isLocalMode, uint32_t event);
-void comm_mgr_srv_uds_res_register_events(uint8_t taskID);
 
 #endif /* INCLUDE_COMM_MGR_H__ */

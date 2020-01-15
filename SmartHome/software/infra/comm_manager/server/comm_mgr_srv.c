@@ -1,3 +1,22 @@
+/*****************************************************************************
+    Description : This is the core of Communication Manager. This doesn't do
+            anything on its own. An instance of Communication Manager needs
+            to be created to use this. Multiple Master instances can be 
+            supported by this module. Currently there is a soft-limit of max 5
+            master instances.
+
+            It is recommneded to use a event driven system for the Master instance
+            using the utils task_handler library.
+
+            Also, this Module enforces a custom protocol for the reliable data
+            connection between the Master instances and its clients.
+            Refer Software Design Specifications for the details about the protocol.
+
+            This module also provides facility to create custom messaging protocols.
+            One of the example is SCOM (Smart Communication Messages) which have
+            rich feature set for message passing.
+******************************************************************************/
+
 #include <stdio.h>
 #include <unistd.h>
 #include <sys/socket.h>
@@ -14,6 +33,7 @@
 #include "comm_mgr_srv.h"
 #include "comm_mgr_cmn.h"
 #include "comm_mgr_srv_protocol.h"
+#include "comm_mgr_srv_uds.h"
 #include "system_mgr.h"
 #include "utils.h"
 
@@ -31,8 +51,6 @@ UTILS_SHM_OBJ *sysmgr_shm_obj;
 uint16_t comm_mgr_reg_apps_num = 0; // Total number of valid registered apps
 COMM_MGR_SRV_REG_APPS *comm_mgr_reg_apps_list;
 UTILS_TASK_HANDLER comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_MAX];
-
-//char buffer[4096]; // TODO :Make a sophesticated data structure
 
 COMM_MGR_SRV_ERR comm_mgr_srv_init() {
 	if (comm_mgr_srv_initialized == TRUE) {
@@ -399,7 +417,8 @@ COMM_MGR_SRV_ERR comm_mgr_srv_accept_clients(uint16_t masterID) {
 						/* Data was received                          */
 						/**********************************************/
 						len = rc;
-						COMM_MGR_SRV_DEBUG("Data received : %s, len : %d", buffer, len);
+                       
+						//COMM_MGR_SRV_DEBUG("Data received : %s, len : %d", buffer, len);
                         master->recv_cb(master->recvDSID ,buffer, len);
 // TODO : Implement a State Machine to determine the next steps in Protcol. Refer software_design doc
 // TODO : Create another file for State Machine and all its functions
@@ -512,7 +531,7 @@ COMM_MGR_SRV_ERR comm_mgr_create_registered_apps_list() {
 
     sysmgr_shm_obj_entry = (SYS_MGR_CLIENT_SHM_TBL_ENTRY *)sysmgr_shm_obj->addr;
     // First iterate over the shm obj to get the number of valid clients.
-    COMM_MGR_SRV_DEBUG("System Manager Registered apps total %d :", comm_mgr_reg_apps_num);
+    COMM_MGR_SRV_DEBUG("System Manager Registered apps total : %d", comm_mgr_reg_apps_num);
     int index = 0;
     for (uint16_t i = 0; i < SYS_MGR_CLIENT_MAX_CLIENTS; i++) {
         if (sysmgr_shm_obj_entry->valid == FALSE) {
@@ -572,8 +591,8 @@ int main() {
     COMM_MGR_SRV_TRACE("Starting the %s...", COMM_MGR_SRV_APP_NAME);
     COMM_MGR_SRV_ERR ret = COMM_MGR_SRV_SUCCESS;
 
-    // Initialize logger
-    log_lib_init(NULL, LOG_LVL_DEBUG);
+    log_lib_init(NULL, LOG_LVL_DEBUG); // Initialize logger
+    utils_ds_init(); // Initialize utils data structure library
 
 	if(comm_mgr_srv_init() != COMM_MGR_SRV_SUCCESS) {
         return -1;
@@ -587,9 +606,6 @@ int main() {
         __comm_mgr_srv_free_master_id(uds_masterID);
     }
    
-  //  comm_mgr_srv_uds_request_handler(comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_UDS_REQ].arg);
-
-
     // Now start the various masters
     if(utils_task_handlers_create(COMM_MGR_SRV_TASK_ID_MAX, comm_mgr_srv_workers, 
                                 COMM_MGR_SRV_LOCAL_EVENT_MAX, COMM_MGR_SRV_GLOBAL_EVENT_MAX) < 0) {

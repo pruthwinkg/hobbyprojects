@@ -7,6 +7,8 @@
 #include <string.h>
 #include "taskhandler.h"
 
+boolean utils_task_handler_initialized = FALSE;
+
 static pthread_t *utils_task_ids;
 
 // These are global event Queues
@@ -40,13 +42,19 @@ int utils_task_handlers_create(uint8_t num_workers,
                               UTILS_TASK_HANDLER *workers,
                               uint16_t maxLocalEvents,
                               uint16_t maxGlobalEvents) {
+
+    if(utils_task_handler_initialized == TRUE) {
+        UTILS_LOG_ERROR("Task handlers are already created. Cannot be called twice\n");
+        return -1;
+    }
+
     UTILS_LOG_TRACE("Creating %d task handlers\n", num_workers);
     int pthread_ret = 0;
 
     utils_task_ids = (pthread_t *)malloc(num_workers * sizeof(pthread_t));
 
     // Create a Global event queue
-    __gEventQueue = (uint32_t *)malloc(sizeof(uint32_t) * maxGlobalEvents);
+    __gEventQueue = (UTILS_EVENT_ID *)malloc(sizeof(UTILS_EVENT_ID) * maxGlobalEvents);
     for (uint16_t i = 0; i < maxGlobalEvents; i++) {
         __gEventQueue[i] = UTILS_TASK_HANDLER_NO_EVENT;
     }
@@ -67,6 +75,8 @@ int utils_task_handlers_create(uint8_t num_workers,
 
     // Create the local event interest table
     __utils_task_handlers_create_event_interest_tbl(maxLocalEvents, num_workers);
+ 
+    utils_task_handler_initialized = TRUE;
 
     /* Update the event interest table */
     for (uint8_t i = 0; i < num_workers; i++) {
@@ -103,6 +113,10 @@ int utils_task_handlers_create(uint8_t num_workers,
 
 // Can add a new event even during runtime
 void utils_task_handlers_register_event(uint16_t event, uint32_t taskID) {
+    if(utils_task_handler_initialized == FALSE) {
+        return;
+    }
+
     if (eventInterestTableInitialized == FALSE) {
         return;
     }
@@ -130,6 +144,10 @@ void utils_task_handlers_register_event(uint16_t event, uint32_t taskID) {
 }
 
 void utils_task_handlers_unregister_event(uint16_t event, uint32_t taskID) {
+    if(utils_task_handler_initialized == FALSE) {
+        return;
+    }
+
     if (eventInterestTableInitialized == FALSE) {
         return;
     }
@@ -147,6 +165,11 @@ void utils_task_handlers_unregister_event(uint16_t event, uint32_t taskID) {
     @brief This function waits for all the workers in the UTILS_TASK_HANDLER list
 */
 int utils_task_handlers_wait(int num_workers, UTILS_TASK_HANDLER *workers) {
+    if(utils_task_handler_initialized == FALSE) {
+        UTILS_LOG_ERROR("Utils task handler not created yet\n");
+        return -1;
+    }
+
     UTILS_LOG_TRACE("Waiting for %d task handlers\n", num_workers);
     int pthread_ret = 0;
     for(uint8_t i = 0; i < num_workers; i++) {
@@ -199,7 +222,12 @@ int utils_task_handlers_wait(int num_workers, UTILS_TASK_HANDLER *workers) {
          G > Global events
 */
 int utils_task_handlers_send_event(boolean isLocalMode, 
-                                    uint16_t event, boolean isHighPrio) {                       
+                                    uint16_t event, boolean isHighPrio) {
+    if(utils_task_handler_initialized == FALSE) {
+        UTILS_LOG_ERROR("Utils task handler not created yet\n");
+        return -1;
+    }
+
     // Current event sending task info
     UTILS_TASK_HANDLER_STATUS *taskInfo = utils_task_handler_get_taskInfo();
     if ((taskInfo == NULL) || (taskInfo->__task == NULL)) {
@@ -264,11 +292,16 @@ int utils_task_handlers_send_event(boolean isLocalMode,
            so that all the events are returned in the same call.
 */
 uint16_t utils_task_handlers_get_events(uint32_t *eventList, uint16_t eventListSize) {
-    uint32_t event = UTILS_TASK_HANDLER_NO_EVENT;
-    uint32_t gEvent = UTILS_TASK_HANDLER_NO_EVENT;
+    UTILS_EVENT_ID event = UTILS_TASK_HANDLER_NO_EVENT;
+    UTILS_EVENT_ID gEvent = UTILS_TASK_HANDLER_NO_EVENT;
     uint16_t eventCount = 0;
     boolean still_pending_events = FALSE;
     uint16_t num_of_entries_read = 0;
+
+    if(utils_task_handler_initialized == FALSE) {
+        UTILS_LOG_ERROR("Utils task handler not created yet\n");
+        return 0;
+    }
 
     if((eventList == NULL) || (eventListSize == 0)) {
         return 0;
@@ -408,7 +441,7 @@ static void* __utils_task_handlers_startup_routine(void *arg) {
         // Create a local event queue for the task (1 entry for Global + __utilsMaxLocalEvents)
         worker->events = (UTILS_TASK_HANDLER_EVENTS *)malloc(sizeof(UTILS_TASK_HANDLER_EVENTS));             
         worker->events->__eventQueueSize = (1 + __utilsMaxLocalEvents);
-        worker->events->__eventQueue = (uint32_t *)malloc(sizeof(uint32_t) * (1+__utilsMaxLocalEvents));
+        worker->events->__eventQueue = (UTILS_EVENT_ID *)malloc(sizeof(UTILS_EVENT_ID) * (1+__utilsMaxLocalEvents));
         for (uint16_t i = 0 ; i < worker->events->__eventQueueSize; i++) {
             worker->events->__eventQueue[i] = UTILS_TASK_HANDLER_NO_EVENT;
         }

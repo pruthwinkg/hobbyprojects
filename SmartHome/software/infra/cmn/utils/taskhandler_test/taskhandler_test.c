@@ -27,7 +27,7 @@ void *func1(void *arg) {
     printf("Sending event %d\n", TEST_LOCAL_EVENT_2);
     utils_task_handlers_send_event(TRUE, TEST_LOCAL_EVENT_2, TRUE); // High priority event
     sleep(2);
-    printf("Sending event %d\n", TEST_LOCAL_EVENT_3);
+   printf("Sending event %d\n", TEST_LOCAL_EVENT_3);
     utils_task_handlers_send_event(TRUE, TEST_LOCAL_EVENT_3, FALSE); 
   
     // Every task should receive this, even if not registered for this event
@@ -120,17 +120,17 @@ void *func4(void *arg) {
 }
 
 
-void func2_reg_events(uint8_t taskID) {
+void func2_reg_events(uint32_t taskID) {
    utils_task_handlers_register_event(TEST_LOCAL_EVENT_2, taskID); 
    utils_task_handlers_register_event(TEST_LOCAL_EVENT_3, taskID); 
 }
 
-void func3_reg_events(uint8_t taskID) {
+void func3_reg_events(uint32_t taskID) {
    utils_task_handlers_register_event(TEST_LOCAL_EVENT_0, taskID); 
    utils_task_handlers_register_event(TEST_LOCAL_EVENT_3, taskID); 
 }
 
-void func4_reg_events(uint8_t taskID) {
+void func4_reg_events(uint32_t taskID) {
    utils_task_handlers_register_event(TEST_LOCAL_EVENT_2, taskID); 
 }
 

@@ -15,7 +15,9 @@
 #define COMM_MGR_MSG_MAX_SIZE       (COMM_MGR_PACKET_MAX_SIZE-COMM_MGR_HDR_SIZE)
 
 // Below are the list of port numbers used by this system (Use above 5000)
-#define COMM_MGR_LOCAL_COM_PORT                 (5001) // Used for UDS based IPC
+#define COMM_MGR_LOCAL_COM_PORT     (5001) // Used for UDS based IPC
+
+#define COMM_MGR_MSG_HDR_MAGIC     (0x1357)
 
 // Communication Manager msg versions (For portability purpose)
 #define COMM_MGR_MSG_HDR_MAJOR_VER      (0)
@@ -23,7 +25,7 @@
 
 // Below structure defines the header for the comm mgr header
 typedef struct {
-    uint32_t magic_number; // Unique number to safeguard/delimit pkts
+    uint32_t magic; // Unique number to safeguard/delimit pkts
     uint8_t major_ver; // Version number of Header
     uint8_t minor_ver;
     COMM_MGR_MSG_TYPE msg_type;

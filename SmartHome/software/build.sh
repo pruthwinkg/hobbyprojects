@@ -45,6 +45,12 @@ function run_make_all_with_testcode_and_debug() {
     make all  
 }
 
+function run_generate_cscope_ctags() {
+    ctags -R
+    find ./ -name '*.c' -o -name '*.h' > cscope.files
+    cscope -q -R -b -i cscope.files
+}
+
 option="${1}" 
 case ${option} in 
    -C) CMAKE_DIR="${2}" 
@@ -76,7 +82,8 @@ case ${option} in
       echo "make all directory is $CMAKE_DIR"
       run_make_all_with_testcode_and_debug
       ;;
-
+   -s) run_generate_cscope_ctags
+      ;;
 
    *)  
    printf "`basename ${0}`:usage:
@@ -85,7 +92,9 @@ case ${option} in
                 [-c <build dir> (Runs 'make clean')]
                 [-d <build dir> (Delete the cmake directory)]   
                 [-G <build dir> (Runs 'Cmake and make all with debug')]
-                [-t <build dir> (Runs 'Cmake and make all with test code')]\n"
+                [-t <build dir> (Runs 'Cmake and make all with test code')]
+                [-Gt <build dir> (Runs 'Cmake and make all with test code and debug')]
+                [-s (Generates cscope and ctags database for searches)]\n"
       exit 1 # Command to come out of the program with status 1
       ;; 
 esac
