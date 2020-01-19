@@ -3,7 +3,13 @@
             anything on its own. An instance of Communication Manager needs
             to be created to use this. Multiple Master instances can be 
             supported by this module. Currently there is a soft-limit of max 5
-            master instances.
+            master instances. All the Master instances run in the context of
+            Communication Manager (same process). They can be thought of as 
+            logical masters. 
+            Example : UDS master
+                It takes care of Unix Domain Sockets, which is effective for
+            communication inside a system. Even multiple UDS masters can be
+            created. Use case will be to handle a set of UIDs by one UDS master.
 
             It is recommneded to use a event driven system for the Master instance
             using the utils task_handler library.
@@ -50,7 +56,6 @@ UTILS_SHM_OBJ *sysmgr_shm_obj;
 
 uint16_t comm_mgr_reg_apps_num = 0; // Total number of valid registered apps
 COMM_MGR_SRV_REG_APPS *comm_mgr_reg_apps_list;
-UTILS_TASK_HANDLER comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_MAX];
 
 COMM_MGR_SRV_ERR comm_mgr_srv_init() {
 	if (comm_mgr_srv_initialized == TRUE) {
@@ -78,6 +83,11 @@ COMM_MGR_SRV_ERR comm_mgr_srv_init() {
     if (comm_mgr_create_registered_apps_list() != COMM_MGR_SRV_SUCCESS) {
         COMM_MGR_SRV_ERROR("Unable to get the registered apps list");
         utils_destroy_shared_obj(sysmgr_shm_obj, FALSE);
+        return COMM_MGR_SRV_INIT_FAILURE;
+    }
+
+    if(comm_mgr_srv_protocol_init() != COMM_MGR_SRV_SUCCESS) {
+        COMM_MGR_SRV_ERROR("Failed to initialize the protocol");
         return COMM_MGR_SRV_INIT_FAILURE;
     }
 
@@ -211,6 +221,13 @@ COMM_MGR_SRV_ERR comm_mgr_srv_init_master(COMM_MGR_SRV_MASTER *master) {
 	}
 
 	COMM_MGR_SRV_TRACE("%s, Master ID [%d] started to listen", COMM_MGR_SRV_APP_NAME, master->__masterID);
+
+    // Call the protocol init function for the specific master 
+    if(comm_mgr_srv_protocol_master_init(master) != COMM_MGR_SRV_SUCCESS) {
+        COMM_MGR_SRV_ERROR("%s failed to initialize the protocol for the Master ID [%d]", COMM_MGR_SRV_APP_NAME, master->__masterID);
+        return COMM_MGR_SRV_PROTO_INIT_ERR;
+    }
+
 
     return COMM_MGR_SRV_SUCCESS;
 }
@@ -419,10 +436,14 @@ COMM_MGR_SRV_ERR comm_mgr_srv_accept_clients(uint16_t masterID) {
 						len = rc;
                        
 						//COMM_MGR_SRV_DEBUG("Data received : %s, len : %d", buffer, len);
-                        master->recv_cb(master->recvDSID ,buffer, len);
-// TODO : Implement a State Machine to determine the next steps in Protcol. Refer software_design doc
-// TODO : Create another file for State Machine and all its functions
-
+                        if (master->__dsid_cb[COMM_MGR_SRV_DSID_RECV]) {
+                            master->__dsid_cb[COMM_MGR_SRV_DSID_RECV](master->__DSID[COMM_MGR_SRV_DSID_RECV], buffer, len, NULL);
+                        } else {
+                            COMM_MGR_SRV_ERROR("DSID [%s] Callback not set. Not sending the data to Master ID %d", 
+                                                DECODE_ENUM(COMM_MGR_SRV_DSID, COMM_MGR_SRV_DSID_RECV), master->__masterID);
+                            close_conn = TRUE;
+                            break;
+                        }
 
 #if 0 // TODO : Enable it Later
 						/**********************************************/
@@ -471,6 +492,18 @@ cleanup_and_exit:
 		}
    	}
 	return rc;
+}
+
+
+
+/************************************************************************
+    @brief  This function is used to send data outbound from Communication
+            Manager.
+
+*************************************************************************/
+COMM_MGR_SRV_ERR comm_mgr_srv_send_data(COMM_MGR_MSG *msg) {
+
+
 }
 
 /************************************************************************
@@ -554,6 +587,11 @@ COMM_MGR_SRV_ERR comm_mgr_create_registered_apps_list() {
     return ret;
 }
 
+COMM_MGR_SRV_MASTER* comm_mgr_srv_get_master(uint16_t masterID) {
+	int masterIndex = COMM_MGR_SRV_GET_MASTER_INDEX(masterID);
+    return &comm_mgr_srv_masters[masterIndex];
+}
+
 /************************************************************************/
 /*			Internal helper functions						    		*/
 /************************************************************************/
@@ -601,7 +639,7 @@ int main() {
     // Create each master instance. If multiple master instances needs to be created
     // call create for each first
     uint16_t uds_masterID = 0;
-    ret = comm_mgr_srv_create_uds_master(&uds_masterID);
+    ret = comm_mgr_srv_create_uds_master(&uds_masterID, COMM_MGR_SRV_MASTER_DEFAULT_UDS);
     if (ret != COMM_MGR_SRV_SUCCESS) {
         __comm_mgr_srv_free_master_id(uds_masterID);
     }

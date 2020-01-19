@@ -11,11 +11,23 @@
 #define UDS_MASTER_RECV_QUEUE_SIZE      (5)
 #define UDS_MASTER_MSG_MAGIC_NUM        (0x2468)
 
+// Actions on UDS messages
+#define UDS_MASTER_MSG_ACTION_DROP          (1 << 0)
+#define UDS_MASTER_MSG_ACTION_COPY          (1 << 1)
+#define UDS_MASTER_MSG_ACTION_FORWARD       (1 << 2)
+#define UDS_MASTER_MSG_ACTION_HOLD          (1 << 3)
+#define UDS_MASTER_MSG_ACTION_PROCESS       (1 << 4)
+
 // This is a local data structure specific for UDS alone
+// Complex data structures can be stored in arg variable.
 typedef struct {
     uint16_t magic;
+    uint16_t action; // Can specify the actions needs to be taken on the packet
+    boolean alloc; // Is data/arg needs to be malloced
     uint32_t uds_datalen;
     char *uds_data;
+    void *arg;
+    uint32_t arg_size;
 } COMM_MGR_SRV_UDS_MSG;
 
 /*****************************************************************************
@@ -26,7 +38,11 @@ void* comm_mgr_srv_uds_request_handler(void *arg);
 void* comm_mgr_srv_uds_response_handler(void *arg);
 COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_recv_data(UTILS_DS_ID id, char *data, uint32_t len);
 COMM_MGR_SRV_ERR comm_mgr_srv_uds_process_events(boolean isLocalMode, uint32_t event);
-void comm_mgr_srv_uds_res_register_events(uint32_t taskID);
+
+void comm_mgr_srv_uds_process_register_events(uint32_t taskID);
+void comm_mgr_srv_uds_response_static_register_events(uint32_t taskID);
+void comm_mgr_srv_uds_response_dynamic_register_events(uint32_t taskID);
+
 
 /*****************************************************************************
                                 Internal Functions

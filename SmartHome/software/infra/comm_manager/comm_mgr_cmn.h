@@ -34,7 +34,7 @@ typedef struct {
     uint16_t dst_uid;
     COMM_MGR_MSG_PRIORITY priority;
     boolean ack_required;
-    int msg_backing_time;
+    uint8_t msg_backing_time; // in minutes (max of 120 mins=2hrs) 
     uint16_t payloadSize;
     // Rest are reserved fields for now
 } COMM_MGR_MSG_HDR;
@@ -43,6 +43,14 @@ typedef struct {
     COMM_MGR_MSG_HDR hdr;
     char *payload;
 } COMM_MGR_MSG;
+
+
+/*********************************************************************************
+                                Public Functions
+**********************************************************************************/
+COMM_MGR_MSG* comm_mgr_create_msg(uint16_t src_uid, uint16_t dst_uid, 
+                                 COMM_MGR_MSG_TYPE msg_type, char *payload, 
+                                 uint16_t payloadSize);
 
 
 #endif /* INCLUDE_COMM_MGR_CMN_H__ */ 

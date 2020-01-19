@@ -11,6 +11,9 @@
         inherited communication system, should follow this protocol. Else
         the Communication manager will drop those packets.
 
+    Each Master Instances will have a single global protocol queue. But each
+    Master Instance will be responsible for serving only the UIDs under them
+
     For exact details about the protocol, refer the Software Design Specification
 
     Rules/Restricitons/Features :
@@ -41,6 +44,8 @@ uint16_t comm_mgr_srv_dynamic_uid_map_max = 0;
 
 UTILS_DS_ID comm_mgr_srv_protocol_dsid = 0;
 
+boolean comm_mgr_srv_protocol_initialized = FALSE;
+
 // Two <UID, uid_ptr> tables are created. One for Static UIDs and another for dynamic. 
 // The tables are indexed with the UIDs. Since the static and dynamic UID ranges 
 //are different two tables are required (Saves memory as well)
@@ -49,26 +54,30 @@ COMM_MGR_SRV_UID_MAP *comm_mgr_srv_protocol_dynamic_uid_tbl; // For ALL user app
 /*
     Mapping format :
         (UID Map)               (COMM_MGR_SRV_PROTO_TBL)
-        UID1 , uid_ptr            uid_ptr -----> proto_tbl (for UID1)
-        UID2 , uid_ptr            uid_ptr -----> proto_tbl (for UID2)
-        UID3 , uid_ptr            uid_ptr -----> proto_tbl (for UID3)
+        UID1 , uid_ptr            uid_ptr -----> proto_tbl (for UID1) (M1 Master ID)
+        UID2 , uid_ptr            uid_ptr -----> proto_tbl (for UID2) (M2)
+        UID3 , uid_ptr            uid_ptr -----> proto_tbl (for UID3) (M1)
 
     Queues Used:
-      comm_mgr_srv_protocol_dsid        One queue for all UIDs (Similar to dst queue, but for protocols only)
+      COMM_MGR_SRV_DSID_RECV            One receive queue per Master instance (For receving the data from clients)
+      COMM_MGR_SRV_DSID_PROTO           One protocol queue per Master instance(Similar to dst queue, but for protocols only)
       comm_mgr_srv_src_uid_dsid[uid]    One queue for each src UID (During discovery phase and when dst is not learnt)
       comm_mgr_srv_dst_uid_dsid[uid]    One queue for each dst UID (For data tx purpose)
 */
 
 /***********************************************************
-    @brief This function initializes the protocol needed
-           for communication manager
+    @brief This function initializes some of the basic tables
+    needed for the Communication Manager Protocol to work.
+    This function must be called only once.
 
-            Only static tbl is created during the init time.
-            For the dynamic tbl creation, the app manager has to
-            request the communication manager.
 ***********************************************************/
 COMM_MGR_SRV_ERR comm_mgr_srv_protocol_init() {
     COMM_MGR_SRV_ERR ret = COMM_MGR_SRV_SUCCESS;
+
+    if (comm_mgr_srv_protocol_initialized == TRUE) {
+        COMM_MGR_SRV_ERROR("Communication Manager Protocol is already initialized");
+        return COMM_MGR_SRV_PROTO_INIT_ERR;
+    }
 
     comm_mgr_srv_static_uid_map_base = SYS_MGR_SYSTEM_STATIC_UID_BASE;
     comm_mgr_srv_static_uid_map_max = SYS_MGR_SYSTEM_STATIC_UID_MAX;
@@ -93,6 +102,25 @@ COMM_MGR_SRV_ERR comm_mgr_srv_protocol_init() {
         return COMM_MGR_SRV_PROTO_INIT_ERR;
     }
 
+    comm_mgr_srv_protocol_initialized = TRUE;
+
+    return COMM_MGR_SRV_SUCCESS;
+}
+
+/***********************************************************
+    @brief This function initializes the protocol needed
+           for communication manager. This function is called for
+           every Master instance
+
+***********************************************************/
+COMM_MGR_SRV_ERR comm_mgr_srv_protocol_master_init(COMM_MGR_SRV_MASTER *master) {
+    COMM_MGR_SRV_ERR ret = COMM_MGR_SRV_SUCCESS;
+
+    if (comm_mgr_srv_protocol_initialized == FALSE) {
+        COMM_MGR_SRV_ERROR("Communication Manager Protocol is not yet initialized");
+        return COMM_MGR_SRV_PROTO_INIT_ERR;
+    }
+
     /* Create a Queue dedicated for Protocol packets
        Currently the size is 1024 which is good enough. If more than 1024 UIDs
        participate in the protocol AT the SAME time, then we will see drops for those
@@ -104,11 +132,14 @@ COMM_MGR_SRV_ERR comm_mgr_srv_protocol_init() {
     comm_mgr_srv_protocol_queue.type = UTILS_QUEUE_CIRCULAR;
     comm_mgr_srv_protocol_queue.size = COMM_MGR_SRV_PROTOCOL_QUEUE_SIZE; 
     comm_mgr_srv_protocol_queue.isPriority = FALSE;
-    comm_mgr_srv_protocol_dsid = utils_ds_queue_create(&comm_mgr_srv_protocol_queue);
-    if (comm_mgr_srv_protocol_dsid == 0) {
+    master->__DSID[COMM_MGR_SRV_DSID_PROTO] = utils_ds_queue_create(&comm_mgr_srv_protocol_queue);
+    if (master->__DSID[COMM_MGR_SRV_DSID_PROTO] == 0) {
         COMM_MGR_SRV_ERROR("Failed to create Protocol queue");
         return COMM_MGR_SRV_PROTO_INIT_ERR;
     }
+
+    COMM_MGR_SRV_DEBUG("Successfully intialized the protocol for the Master ID [%d], Proto DSID [%d]",
+                                        master->__masterID, master->__DSID[COMM_MGR_SRV_DSID_PROTO]);
 
     return ret;
 }
@@ -149,15 +180,21 @@ COMM_MGR_SRV_ERR comm_mgr_srv_protocol_statemachine(COMM_MGR_PROTO_STATES state,
             COMM_MGR_SRV_ERROR("Invalid protocol state");
             return COMM_MGR_SRV_PROTO_INVALID_STATE;
     }
+
+    // If an error occurs when in protocol states
+    // Return the correct error code, so that Master instance will decide what to do next
+    if (ret != COMM_MGR_SRV_SUCCESS) {
+        COMM_MGR_SRV_ERROR("Error occurred for the UID [%d] during protocol", uid);
+        return COMM_MGR_SRV_PROTO_ERR; // Return a common error code
+    }
+
     return COMM_MGR_SRV_SUCCESS;
 }
 
 /*
     This function needs to be called by the Communication Manager Master
     instances whenever it receives a packet.
-
-    
-   <TODO> Should be ask the Master instance to discard the packet upon error
+ 
    <TODO> Also should we use another thread or use the response handler ???
 
 */
@@ -277,7 +314,7 @@ static COMM_MGR_SRV_ERR __comm_mgr_srv_protocol_process_data_packet(COMM_MGR_MSG
                                                 msg->hdr.src_uid);
         proto_tbl = __comm_mgr_srv_protocol_uid_map_insert(msg->hdr.src_uid); 
         
-        // Start the Protocol State Machine (current state = COMM_MGR_PROTO_DISCOVERY_START)        
+        // Start the Protocol State Machine (current state = COMM_MGR_PROTO_DISCOVERY_START) 
         ret = comm_mgr_srv_protocol_statemachine(proto_tbl->proto_state, msg->hdr.src_uid);
         return ret;
     }
@@ -289,11 +326,50 @@ static COMM_MGR_SRV_ERR __comm_mgr_srv_protocol_process_data_packet(COMM_MGR_MSG
 
 }
 
+
+
+
 static COMM_MGR_SRV_ERR __comm_mgr_srv_protocol_discovery_start(uint16_t uid) {
     // Send a discovery start msg to the UID by adding to protocol queue
     // and sending a high priority event to response handlers
-    COMM_MGR_MSG *msg = //malloc();
+    COMM_MGR_MSG *msg = comm_mgr_create_msg(SYS_MGR_SYSTEM_UID_COMM_MANAGER, uid,
+                                            COMM_MGR_MSG_PROTOCOL, NULL, 0);
 
+    if (msg == NULL) {
+        COMM_MGR_SRV_ERROR("There is no memory left to process the packet, dst uid[%d]", uid);
+        return COMM_MGR_SRV_OUT_OF_MEMORY;
+    }
+
+    // Get the protocol tbl for this UID
+    COMM_MGR_SRV_PROTO_TBL *proto_tbl = __comm_mgr_srv_protocol_uid_map_get(uid);
+    if (proto_tbl == NULL) { // This is an error case. Abort the protocol for this UID
+        COMM_MGR_SRV_ERROR("Failed to get the protocol table for UID [%d], in Discovery state", uid);
+        return COMM_MGR_SRV_PROTO_ERR;
+    }
+    
+    // Also get the Master instance for this UID
+    COMM_MGR_SRV_MASTER *master = comm_mgr_srv_get_master(proto_tbl->masterID);
+    if (master == NULL) {
+        COMM_MGR_SRV_ERROR("Unable to get the Master instance for the UID [%d], master ID [%d]",
+                                    uid, proto_tbl->masterID);
+        return COMM_MGR_SRV_PROTO_ERR;
+    }
+
+    // Change the message priority so that client process it as soon as possible
+    msg->hdr.priority = COMM_MGR_MSG_PRIORITY_HIGH;    
+    msg->hdr.submsg_type = COMM_MGR_SUBMSG_DISCOVERY;
+    msg->hdr.ack_required = TRUE; // Protocol packets need ACK, so that if response is not received, retransmit
+    // The protocol packets doesnt need backing time. But the first data packet requires
+
+    // Insert the msg to the protocol queue and send event
+    if(master->__dsid_cb[COMM_MGR_SRV_DSID_PROTO](master->__DSID[COMM_MGR_SRV_DSID_PROTO], NULL, 0, (void *)msg) != COMM_MGR_SRV_SUCCESS) {
+        COMM_MGR_SRV_ERROR("Failed to insert the data to DSID 0x%0x", master->__DSID[COMM_MGR_SRV_DSID_PROTO]);
+        return COMM_MGR_SRV_UTILS_DSID_ERR;
+    }
+
+    utils_task_handlers_send_event(TRUE, COMM_MGR_SRV_LOCAL_EVENT_PROTO_SEND, TRUE);
+
+    return COMM_MGR_SRV_SUCCESS;
 }
 
 
@@ -340,6 +416,16 @@ static COMM_MGR_SRV_PROTO_TBL* __comm_mgr_srv_protocol_uid_map_insert(uint16_t u
     proto_entry->server_fd = -1;
     proto_entry->proto_state = COMM_MGR_PROTO_DISCOVERY_START;
 
+    // Check who is Master instance of this task
+    COMM_MGR_SRV_MASTER *master = __comm_mgr_srv_protocol_get_master();
+
+    if(master == NULL) {
+        COMM_MGR_SRV_ERROR("Not to able to identify the Master for the UID [%d]", uid);
+        return NULL;
+    }
+
+    proto_entry->masterID = master->__masterID;
+
     // Add the entry to the UID map
     if(__comm_mgr_srv_is_uid_static(uid)) {
         comm_mgr_srv_protocol_static_uid_tbl[uid].UID = uid;
@@ -350,5 +436,28 @@ static COMM_MGR_SRV_PROTO_TBL* __comm_mgr_srv_protocol_uid_map_insert(uint16_t u
     }
 
     return proto_entry;
+}
+
+/*
+    This function can be called by any Task, to get it Master Information
+
+    Very useful say when we have a common function which is run by two tasks
+    belonging to two Master instances, then we need to identify the Master in
+    some cases to make some decisions like which DSIS to use etc
+
+    Refer the UTILS task handler lib and its sample test example to get to know
+    about the API
+*/
+static COMM_MGR_SRV_MASTER* __comm_mgr_srv_protocol_get_master(void) {
+    UTILS_TASK_HANDLER_STATUS *task_st = utils_task_handler_get_taskInfo();
+
+    if ((task_st == NULL) || 
+        (task_st->__task == NULL) || 
+        (task_st->__task->arg == NULL)) {
+        return NULL;
+    }
+    // This should have been set during the Master instance creation
+    uint16_t masterID = *(uint16_t *)task_st->__task->arg;
+    return comm_mgr_srv_get_master(masterID);
 }
 

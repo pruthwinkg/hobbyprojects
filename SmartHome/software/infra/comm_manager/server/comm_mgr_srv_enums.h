@@ -32,11 +32,14 @@ BEGIN_ENUM(COMM_MGR_SRV_ERR) {
     ADD_ENUM(COMM_MGR_SRV_BAD_SHM_OBJ)
     ADD_ENUM(COMM_MGR_SRV_PROTO_INIT_ERR)
     ADD_ENUM(COMM_MGR_SRV_PROTO_INVALID_STATE)
+    ADD_ENUM(COMM_MGR_SRV_PROTO_ERR)
     ADD_ENUM(COMM_MGR_SRV_PROTO_BAD_PACKET)
     ADD_ENUM(COMM_MGR_SRV_OUT_OF_MEMORY)
-    ADD_ENUM(COMM_MGR_SRV_RECV_DSID_ERR)
+    ADD_ENUM(COMM_MGR_SRV_UTILS_DSID_ERR)
     ADD_ENUM(COMM_MGR_SRV_UNKNOWN_EVENT)
     ADD_ENUM(COMM_MGR_SRV_UDS_MASTER_INIT_ERR)
+    ADD_ENUM(COMM_MGR_SRV_UDS_BAD_PACKET)
+    ADD_ENUM(COMM_MGR_SRV_UDS_PROCESS_EVENT_ERR)
 } END_ENUM(COMM_MGR_SRV_ERR);
 
 
@@ -48,6 +51,13 @@ BEGIN_ENUM(COMM_MGR_SRV_IPC_AF) {
 } END_ENUM(COMM_MGR_SRV_IPC_AF);
 
 
+BEGIN_ENUM(COMM_MGR_SRV_MASTER_INSTANCE) {
+    ADD_ENUM_STR(COMM_MGR_SRV_MASTER_DEFAULT_UDS, "Default UDS Master Instance")
+    ADD_ENUM_STR(COMM_MGR_SRV_MASTER_SECONDARY_UDS, "Secondary UDS Master Instance")
+    ADD_ENUM_STR(COMM_MGR_SRV_MASTER_DEFAULT_IDS, "Default IDS Master Instance")
+    ADD_ENUM(COMM_MGR_SRV_MASTER_INSTANCE_MAX)
+} END_ENUM(COMM_MGR_SRV_MASTER_INSTANCE);
+
 BEGIN_ENUM(COMM_MGR_SRV_TASK_ID) {
     ADD_ENUM_STR(COMM_MGR_SRV_TASK_ID_UDS_REQ, "UDS request handler")
     ADD_ENUM_STR(COMM_MGR_SRV_TASK_ID_UDS_RES, "UDS process handler")
@@ -56,6 +66,13 @@ BEGIN_ENUM(COMM_MGR_SRV_TASK_ID) {
     ADD_ENUM(COMM_MGR_SRV_TASK_ID_MAX)
 } END_ENUM(COMM_MGR_SRV_TASK_ID);
 
+//These are some of the predefined DSID needed by Communication Manager. The master
+// instance can also add its own DSIDs outside this range
+BEGIN_ENUM(COMM_MGR_SRV_DSID) {
+    ADD_ENUM_STR(COMM_MGR_SRV_DSID_RECV, "DSID for receiving the Data")
+    ADD_ENUM_STR(COMM_MGR_SRV_DSID_PROTO, "DSID for Protocols")
+    ADD_ENUM(COMM_MGR_SRV_DSID_MAX) // Master instances can use private DSIDs outside this
+} END_ENUM(COMM_MGR_SRV_DSID);
 
 /********************************************************************************/
 /*                      Event functionality (using utils library)               */
@@ -65,6 +82,7 @@ BEGIN_ENUM(COMM_MGR_SRV_TASK_ID) {
 // Local events are targeted events. They need to be registered by the receiving tasks
 BEGIN_ENUM(COMM_MGR_SRV_LOCAL_EVENT) {
     ADD_ENUM_STR(COMM_MGR_SRV_LOCAL_EVENT_RECV_READY, "Data Received from clients")
+    ADD_ENUM_STR(COMM_MGR_SRV_LOCAL_EVENT_PROTO_SEND, "Send Protocol packets to clients")
     ADD_ENUM(COMM_MGR_SRV_LOCAL_EVENT_MAX)
 } END_ENUM(COMM_MGR_SRV_LOCAL_EVENT);
 

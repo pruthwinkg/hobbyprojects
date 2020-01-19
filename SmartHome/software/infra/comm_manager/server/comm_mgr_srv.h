@@ -26,7 +26,10 @@
 extern boolean comm_mgr_srv_initialized;
 extern UTILS_TASK_HANDLER comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_MAX];
 
-typedef COMM_MGR_SRV_ERR (*comm_mgr_srv_recv_cb)(UTILS_DS_ID, char *, uint32_t);
+// The last argument (void *) can be used to send complex datastrcuture
+// If void *arg is used, then the corresponding dsid_cb should be able to
+// tyoecast to apprioate type for that DSID and use it.
+typedef COMM_MGR_SRV_ERR (*comm_mgr_srv_dsid_cb)(UTILS_DS_ID, char *, uint32_t, void *, uint32_t);
 
 //extern char buffer[4096]; // // TODO :Make a sophesticated data structure
 
@@ -37,8 +40,8 @@ typedef struct {
     boolean reuseaddr;              /* In */
     boolean nonblockingIO;          /* In */
     int srvInactivityTimeOut;       /* In */ // -1 to wait infinite, valid range (1 - INT_MAX) mins
-    UTILS_DS_ID recvDSID;           /* In */  // DS ID for storing the recived data
-    comm_mgr_srv_recv_cb recv_cb;   /* In */ // Call back function for Recieve data
+    UTILS_DS_ID *__DSID;            /* In */ // Array of DS ID needed by Master instances
+    comm_mgr_srv_dsid_cb *__dsid_cb;/* In */ // Array of Call back function needed by callback functions
     int __masterFd;                 /* Out */
     boolean __masterReady;          /* Out */ //Useful in multi-threaded environment.Protect by mutex if required 
     uint16_t __masterID;            /* Out */  // To idetify the Master
@@ -62,5 +65,8 @@ COMM_MGR_SRV_ERR comm_mgr_create_registered_apps_list(void);
 COMM_MGR_SRV_ERR comm_mgr_srv_destroy(void);
 COMM_MGR_SRV_ERR comm_mgr_srv_init_master(COMM_MGR_SRV_MASTER *master);
 COMM_MGR_SRV_ERR comm_mgr_srv_accept_clients(uint16_t masterID);
+COMM_MGR_SRV_ERR comm_mgr_srv_send_data(COMM_MGR_MSG *msg);
+COMM_MGR_SRV_ERR comm_mgr_create_registered_apps_list(void);
+COMM_MGR_SRV_MASTER* comm_mgr_srv_get_master(uint16_t masterID);
 
 #endif /* INCLUDE_COMM_MGR_H__ */

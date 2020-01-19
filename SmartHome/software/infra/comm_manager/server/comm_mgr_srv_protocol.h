@@ -30,6 +30,7 @@ typedef struct {
     uint32_t UID;
     int server_fd;
     COMM_MGR_PROTO_STATES proto_state; // Current state
+    uint16_t masterID; // Can map a UID for a Master instance
     COMM_MGR_SRV_PROTO_TBL_PROPERTY *property; // If null, use default
 } COMM_MGR_SRV_PROTO_TBL;
 

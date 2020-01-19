@@ -49,6 +49,7 @@ function run_generate_cscope_ctags() {
     ctags -R
     find ./ -name '*.c' -o -name '*.h' > cscope.files
     cscope -q -R -b -i cscope.files
+    echo "Generated ctags and cscope. Ready for use (cscope -d)"
 }
 
 option="${1}" 
