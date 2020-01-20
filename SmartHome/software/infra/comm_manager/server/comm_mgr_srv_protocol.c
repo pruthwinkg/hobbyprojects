@@ -138,7 +138,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_protocol_master_init(COMM_MGR_SRV_MASTER *master) 
         return COMM_MGR_SRV_PROTO_INIT_ERR;
     }
 
-    COMM_MGR_SRV_DEBUG("Successfully intialized the protocol for the Master ID [%d], Proto DSID [%d]",
+    COMM_MGR_SRV_DEBUG("Successfully intialized the protocol for the Master ID [%d], Proto DSID [0x%0x]",
                                         master->__masterID, master->__DSID[COMM_MGR_SRV_DSID_PROTO]);
 
     return ret;
@@ -198,18 +198,18 @@ COMM_MGR_SRV_ERR comm_mgr_srv_protocol_statemachine(COMM_MGR_PROTO_STATES state,
    <TODO> Also should we use another thread or use the response handler ???
 
 */
-COMM_MGR_SRV_ERR comm_mgr_srv_protocol_process_packet(COMM_MGR_MSG *msg) {
+COMM_MGR_SRV_ERR comm_mgr_srv_protocol_process_packet(COMM_MGR_SRV_MSG *srv_msg) {
     COMM_MGR_SRV_ERR ret = COMM_MGR_SRV_SUCCESS;
-    if (msg == NULL) {
+    if (srv_msg == NULL) {
         COMM_MGR_SRV_DEBUG("comm msg is NULL");
         return COMM_MGR_SRV_PROTO_BAD_PACKET;
     }
-    if (msg->hdr.magic != COMM_MGR_MSG_HDR_MAGIC) {
+    if (srv_msg->msg->hdr.magic != COMM_MGR_MSG_HDR_MAGIC) {
         COMM_MGR_SRV_DEBUG("Invalid comm msg. Wrong magic");
         return COMM_MGR_SRV_PROTO_BAD_PACKET;
     }
-    if (__comm_mgr_srv_is_uid_valid(msg->hdr.src_uid) && 
-        __comm_mgr_srv_is_uid_valid(msg->hdr.dst_uid)) {
+    if ((!__comm_mgr_srv_is_uid_valid(srv_msg->msg->hdr.src_uid)) || 
+        (!__comm_mgr_srv_is_uid_valid(srv_msg->msg->hdr.dst_uid))) {
         COMM_MGR_SRV_DEBUG("Invalid comm msg. Wrong UID");
         return COMM_MGR_SRV_PROTO_BAD_PACKET;
     }
@@ -218,15 +218,15 @@ COMM_MGR_SRV_ERR comm_mgr_srv_protocol_process_packet(COMM_MGR_MSG *msg) {
     // inter-systems comes in future
 
     // If basic sanity passes, process the received packet and take action
-    switch(msg->hdr.msg_type) {
+    switch(srv_msg->msg->hdr.msg_type) {
         case COMM_MGR_MSG_PROTOCOL:
-            ret =__comm_mgr_srv_protocol_process_proto_packet(msg);
+            ret =__comm_mgr_srv_protocol_process_proto_packet(srv_msg);
             break;
         case COMM_MGR_MSG_ACK:
-            ret =__comm_mgr_srv_protocol_process_ack_packet(msg);
+            ret =__comm_mgr_srv_protocol_process_ack_packet(srv_msg);
             break;
         case COMM_MGR_MSG_DATA:
-            ret =__comm_mgr_srv_protocol_process_data_packet(msg);
+            ret =__comm_mgr_srv_protocol_process_data_packet(srv_msg);
             break;
         default:
             COMM_MGR_SRV_DEBUG("Invalid comm msg type");
@@ -245,7 +245,7 @@ static COMM_MGR_SRV_UID_MAP* __comm_mgr_srv_protocol_create_uid_tbl(uint32_t bas
     COMM_MGR_SRV_UID_MAP *uid_tbl = 
                         (COMM_MGR_SRV_UID_MAP*)malloc(total_size);
 
-    for (uint16_t i = 0; i < total_size; i++) {
+    for (uint16_t i = 0; i < (max-base); i++) {
         uid_tbl->UID = COMM_MGR_SRV_INVALID_UID;
         uid_tbl->uid_ptr = NULL;
     }
@@ -257,13 +257,13 @@ static COMM_MGR_SRV_UID_MAP* __comm_mgr_srv_protocol_create_uid_tbl(uint32_t bas
     Note : The protocol is always intiated by Communication Manager. In case a client
     tries to initiate protocol on its own drop such packets
 */
-static COMM_MGR_SRV_ERR __comm_mgr_srv_protocol_process_proto_packet(COMM_MGR_MSG *msg) {
+static COMM_MGR_SRV_ERR __comm_mgr_srv_protocol_process_proto_packet(COMM_MGR_SRV_MSG *srv_msg) {
     // If Protocol packet is received, the client src uid should already be present in the UID map
     // And, the current state should be in one of the protocol states for that client
     // Else, it means the client tried to start the protocol on its own => drop the packet
-    COMM_MGR_SRV_PROTO_TBL *proto_tbl = __comm_mgr_srv_protocol_uid_map_get(msg->hdr.src_uid);
+    COMM_MGR_SRV_PROTO_TBL *proto_tbl = __comm_mgr_srv_protocol_uid_map_get(srv_msg->msg->hdr.src_uid);
     if (proto_tbl == NULL) {
-        COMM_MGR_SRV_DEBUG("Client UID [%d] tried to initiate the protocol. Discarding", msg->hdr.src_uid);
+        COMM_MGR_SRV_DEBUG("Client UID [%d] tried to initiate the protocol. Discarding", srv_msg->msg->hdr.src_uid);
         return COMM_MGR_SRV_PROTO_BAD_PACKET;
     }
 
@@ -283,13 +283,13 @@ static COMM_MGR_SRV_ERR __comm_mgr_srv_protocol_process_proto_packet(COMM_MGR_MS
 
     // <TODO> <NOT YET IMPLEMENTED>
  
+    }
+
+static COMM_MGR_SRV_ERR __comm_mgr_srv_protocol_process_ack_packet(COMM_MGR_SRV_MSG *srv_msg) {
+
 }
 
-static COMM_MGR_SRV_ERR __comm_mgr_srv_protocol_process_ack_packet(COMM_MGR_MSG *msg) {
-
-}
-
-static COMM_MGR_SRV_ERR __comm_mgr_srv_protocol_process_data_packet(COMM_MGR_MSG *msg) {
+static COMM_MGR_SRV_ERR __comm_mgr_srv_protocol_process_data_packet(COMM_MGR_SRV_MSG *srv_msg) {
     // If a Data Packet is received, check the UID map table for the current state of
     // the UID. If the UID is present with the current state as COMM_MGR_PROTO_DATATRANSFER_READY,
     // we can simply honour the request from the client. We can forward to the dest_uid if the
@@ -309,14 +309,19 @@ static COMM_MGR_SRV_ERR __comm_mgr_srv_protocol_process_data_packet(COMM_MGR_MSG
             another for Dynamic Dest UID. These threads will be per Master Instances
     */
     COMM_MGR_SRV_ERR ret = COMM_MGR_SRV_SUCCESS;
-    COMM_MGR_SRV_PROTO_TBL *proto_tbl = __comm_mgr_srv_protocol_uid_map_get(msg->hdr.src_uid);
+    COMM_MGR_SRV_PROTO_TBL *proto_tbl = __comm_mgr_srv_protocol_uid_map_get(srv_msg->msg->hdr.src_uid);
     if (proto_tbl == NULL) { //  case 1 : New UID discovered
         COMM_MGR_SRV_DEBUG("Client UID [%d] connecting to the Communication Manager for the first time",
-                                                msg->hdr.src_uid);
-        proto_tbl = __comm_mgr_srv_protocol_uid_map_insert(msg->hdr.src_uid); 
+                                                srv_msg->msg->hdr.src_uid);
+        proto_tbl = __comm_mgr_srv_protocol_uid_map_insert(srv_msg->msg->hdr.src_uid, srv_msg->server_fd); 
         
         // Start the Protocol State Machine (current state = COMM_MGR_PROTO_DISCOVERY_START) 
-        ret = comm_mgr_srv_protocol_statemachine(proto_tbl->proto_state, msg->hdr.src_uid);
+        ret = comm_mgr_srv_protocol_statemachine(proto_tbl->proto_state, srv_msg->msg->hdr.src_uid);
+
+        // Since the discovery has just started for this data packet, ask
+        // the Master instance to hold the packet
+        srv_msg->action |= COMM_MGR_SRV_MSG_ACTION_HOLD;
+
         return ret;
     }
     
@@ -362,13 +367,18 @@ static COMM_MGR_SRV_ERR __comm_mgr_srv_protocol_discovery_start(uint16_t uid) {
     msg->hdr.ack_required = TRUE; // Protocol packets need ACK, so that if response is not received, retransmit
     // The protocol packets doesnt need backing time. But the first data packet requires
 
+    COMM_MGR_SRV_DEBUG("Sending Discovery Start Protocol message to UID [%d] with fd [%d]", uid, proto_tbl->server_fd);
+
+    COMM_MGR_SRV_MSG *comm_mgr_srv_msg = (COMM_MGR_SRV_MSG *)malloc(sizeof(COMM_MGR_SRV_MSG));
+    comm_mgr_srv_msg->server_fd = proto_tbl->server_fd;
+    comm_mgr_srv_msg->msg = msg;
+
     // Insert the msg to the protocol queue and send event
-    if(master->__dsid_cb[COMM_MGR_SRV_DSID_PROTO](master->__DSID[COMM_MGR_SRV_DSID_PROTO], NULL, 0, (void *)msg) != COMM_MGR_SRV_SUCCESS) {
+    if(master->__dsid_cb[COMM_MGR_SRV_DSID_PROTO](master->__DSID[COMM_MGR_SRV_DSID_PROTO], 
+                                            NULL, 0, (void *)comm_mgr_srv_msg) != COMM_MGR_SRV_SUCCESS) {
         COMM_MGR_SRV_ERROR("Failed to insert the data to DSID 0x%0x", master->__DSID[COMM_MGR_SRV_DSID_PROTO]);
         return COMM_MGR_SRV_UTILS_DSID_ERR;
     }
-
-    utils_task_handlers_send_event(TRUE, COMM_MGR_SRV_LOCAL_EVENT_PROTO_SEND, TRUE);
 
     return COMM_MGR_SRV_SUCCESS;
 }
@@ -407,14 +417,14 @@ static COMM_MGR_SRV_PROTO_TBL* __comm_mgr_srv_protocol_uid_map_get(uint16_t uid)
     return comm_mgr_srv_protocol_dynamic_uid_tbl[uid].uid_ptr;
 }
 
-static COMM_MGR_SRV_PROTO_TBL* __comm_mgr_srv_protocol_uid_map_insert(uint16_t uid) {
+static COMM_MGR_SRV_PROTO_TBL* __comm_mgr_srv_protocol_uid_map_insert(uint16_t uid, uint32_t fd) {
     COMM_MGR_SRV_PROTO_TBL *proto_entry = NULL;
 
     proto_entry = (COMM_MGR_SRV_PROTO_TBL *)malloc(sizeof(COMM_MGR_SRV_PROTO_TBL));
     memset(proto_entry, 0, sizeof(COMM_MGR_SRV_PROTO_TBL));
 
     proto_entry->UID = uid;
-    proto_entry->server_fd = -1;
+    proto_entry->server_fd = fd;
     proto_entry->proto_state = COMM_MGR_PROTO_DISCOVERY_START;
 
     // Check who is Master instance of this task
@@ -435,6 +445,9 @@ static COMM_MGR_SRV_PROTO_TBL* __comm_mgr_srv_protocol_uid_map_insert(uint16_t u
         comm_mgr_srv_protocol_dynamic_uid_tbl[uid].UID = uid;
         comm_mgr_srv_protocol_dynamic_uid_tbl[uid].uid_ptr = proto_entry;
     }
+
+    COMM_MGR_SRV_DEBUG("Mapped UID [%d] to server fd [%d] in the [%s] UID table", 
+                                        uid, fd, __comm_mgr_srv_is_uid_static(uid) ? "Static":"Dynamic");
 
     return proto_entry;
 }

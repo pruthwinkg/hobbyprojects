@@ -75,6 +75,11 @@ COMM_MGR_SRV_ERR comm_mgr_srv_init() {
     sysmgr_shm_obj = utils_create_shared_obj(SYS_MGR_SHM_ID_SYS_MANAGER_CLIENT_TBL, 
                                              shm_obj_size,
                                              UTILS_SHM_FLAGS_RDONLY | UTILS_SHM_FLAGS_SHARED);
+
+    if(sysmgr_shm_obj == NULL) {
+        COMM_MGR_SRV_ERROR("Couldn't get the system manager client table shm obj");
+        return COMM_MGR_SRV_BAD_SHM_OBJ;
+    }
     // Note : No need to check for the SYS_MGR_SHM_OBJ_USERDEFINED_CREATED, since it is
     // guranteed that comm_manager is started post shm obj creation by sys manager
     // It might be required in the case where comm_manager is started independent of sys manager
@@ -436,7 +441,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_accept_clients(uint16_t masterID) {
                        
 						//COMM_MGR_SRV_DEBUG("Data received : %s, len : %d", buffer, len);
                         if (master->__dsid_cb[COMM_MGR_SRV_DSID_RECV]) {
-                            master->__dsid_cb[COMM_MGR_SRV_DSID_RECV](master->__DSID[COMM_MGR_SRV_DSID_RECV], buffer, len, NULL);
+                            master->__dsid_cb[COMM_MGR_SRV_DSID_RECV](master->__DSID[COMM_MGR_SRV_DSID_RECV], buffer, len, (void *)&i);
                         } else {
                             COMM_MGR_SRV_ERROR("DSID [%s] Callback not set. Not sending the data to Master ID %d", 
                                                 DECODE_ENUM(COMM_MGR_SRV_DSID, COMM_MGR_SRV_DSID_RECV), master->__masterID);
@@ -501,17 +506,21 @@ cleanup_and_exit:
 
 *************************************************************************/
 COMM_MGR_SRV_ERR comm_mgr_srv_send_data(COMM_MGR_SRV_MASTER *master, 
-                                        COMM_MGR_MSG *msg) {
+                                        COMM_MGR_SRV_MSG *srv_msg) {
     int rc = 0;                                        
-    if ((msg == NULL) || (master == NULL)) {
+    if ((srv_msg == NULL) || (master == NULL) || (srv_msg->msg == NULL)) {
         COMM_MGR_SRV_ERROR("Received invalid argument");
         return COMM_MGR_SRV_INVALID_ARG;
     } 
 
-    uint16_t len = 0;
-    len = sizeof(COMM_MGR_MSG_HDR) + (msg->hdr.payloadSize * sizeof(char));
+    if (srv_msg->server_fd == 0) {
+        COMM_MGR_SRV_ERROR("Server fd is 0 for UID [%d]. Aborting the send", srv_msg->msg->hdr.dst_uid);
+    }
+
+    uint32_t len = 0;
+    len = sizeof(COMM_MGR_MSG_HDR) + (srv_msg->msg->hdr.payloadSize * sizeof(char));
     
-    rc = send(master->__masterFd, (char *)msg, len, 0);
+    rc = send(srv_msg->server_fd, (char *)srv_msg->msg, len, 0);
     if (rc < 0) {
         COMM_MGR_SRV_ERROR("  send() failed");
         return COMM_MGR_SRV_SEND_ERR;

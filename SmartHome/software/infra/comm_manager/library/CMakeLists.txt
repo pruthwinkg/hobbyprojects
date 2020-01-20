@@ -13,9 +13,9 @@ set (SOURCE_FILE_LIST "comm_mgr_lib.c"
 
 # Generate the library
 if(GENERATE_SHARED_LIB)
-    add_library (${LIB_NAME} SHARED ${SOURCE_FILE_LIST})
+    add_library (${LIB_NAME} SHARED ${SOURCE_FILE_LIST} $<TARGET_OBJECTS:comm_mgr_cmn>)
 else(GENERATE_SHARED_LIB)
-    add_library (${LIB_NAME} STATIC ${SOURCE_FILE_LIST})
+    add_library (${LIB_NAME} STATIC ${SOURCE_FILE_LIST} $<TARGET_OBJECTS:comm_mgr_cmn>)
 endif(GENERATE_SHARED_LIB)
 
 # Link any shared or static libraries, if required

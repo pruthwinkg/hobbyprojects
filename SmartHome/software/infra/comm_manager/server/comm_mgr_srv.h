@@ -48,6 +48,16 @@ typedef struct {
     uint16_t __masterID;            /* Out */  // To idetify the Master
 } COMM_MGR_SRV_MASTER;
 
+// This message formt is very internal to Communicaton Manager.
+// It carries some internal header information along with the
+// actual message when it is passed from one block to another block
+// in the Communication Manager
+typedef struct {
+    uint32_t server_fd;
+    uint32_t action; // Action the Master instance need to take
+    COMM_MGR_MSG *msg;
+} COMM_MGR_SRV_MSG;
+
 
 /************************************************************************/
 /*                   Internal helper functions                          */
@@ -66,7 +76,7 @@ COMM_MGR_SRV_ERR comm_mgr_create_registered_apps_list(void);
 COMM_MGR_SRV_ERR comm_mgr_srv_destroy(void);
 COMM_MGR_SRV_ERR comm_mgr_srv_init_master(COMM_MGR_SRV_MASTER *master);
 COMM_MGR_SRV_ERR comm_mgr_srv_accept_clients(uint16_t masterID);
-COMM_MGR_SRV_ERR comm_mgr_srv_send_data(COMM_MGR_SRV_MASTER *master, COMM_MGR_MSG *msg);
+COMM_MGR_SRV_ERR comm_mgr_srv_send_data(COMM_MGR_SRV_MASTER *master, COMM_MGR_SRV_MSG *srv_msg);
 COMM_MGR_SRV_ERR comm_mgr_create_registered_apps_list(void);
 COMM_MGR_SRV_MASTER* comm_mgr_srv_get_master(uint16_t masterID);
 

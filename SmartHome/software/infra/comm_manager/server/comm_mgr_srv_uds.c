@@ -177,6 +177,8 @@ void* comm_mgr_srv_uds_response_dynamic_handler(void *arg) {
     utils_ds is data agnostic library. Its upto the apps to make sure that
     correct data is decoded.
 
+    Note : In the 'arg', the Communication Manager Core sends us the server fd
+          on which the data is received. Map it to UID
 
     Data Format :
        | Magic (UDS) | Data len | Data (COMM_MGR_MSG) |
@@ -185,13 +187,15 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_recv_data(UTILS_DS_ID id,
                                         char *data, uint32_t len, void *arg) {
     boolean priority = FALSE; // This flag needs to be set depending on the
                               // payload received
-    COMM_MGR_SRV_UDS_MSG *uds_msg = __comm_mgr_srv_uds_msg_encode(data, len, NULL, 0);
+    uint32_t server_fd = *(uint32_t *)arg;
+    // Server fd is sent in 'arg'. Alloc 4 bytes for storing this fd                             
+    COMM_MGR_SRV_UDS_MSG *uds_msg = __comm_mgr_srv_uds_msg_encode(data, len, (void *)&server_fd, sizeof(uint32_t));
     if (uds_msg == NULL) {
         COMM_MGR_SRV_ERROR("Failed to allocate memory");
         return COMM_MGR_SRV_OUT_OF_MEMORY;
     }
 
-    COMM_MGR_SRV_DEBUG("Inserting data to DSID 0x%0x, len = %d", id, len);
+    COMM_MGR_SRV_DEBUG("Inserting data to DSID 0x%0x, len = %d, server fd = %d", id, len, server_fd);
     // Insert the data to Queue
     if(utils_ds_queue_enqueue(id, (void *)uds_msg) < 0) {
         COMM_MGR_SRV_ERROR("Failed to insert the data to DSID 0x%0x", id);
@@ -213,7 +217,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_proto_data(UTILS_DS_ID id,
         COMM_MGR_SRV_ERROR("Invalid argument. arg is NULL");
         return COMM_MGR_SRV_INVALID_ARG;
     }
-    COMM_MGR_MSG *msg = (COMM_MGR_MSG *)arg;
+    COMM_MGR_SRV_MSG *srv_msg = (COMM_MGR_SRV_MSG *)arg;
 
     // Enqueue the message to protocol queue after encoding in UDS format
     COMM_MGR_SRV_UDS_MSG *uds_msg = __comm_mgr_srv_uds_msg_encode(NULL, 0, arg, 0); // Hint that no need to malloc by arg_size=0
@@ -265,31 +269,47 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_process_events(uint16_t masterID, boolean isLo
                     if (uds_msg == NULL) {
                         break; // Queue is empty
                     }
-                    if(__comm_mgr_srv_uds_msg_decode(uds_msg, &out_data, &out_datalen, NULL) != COMM_MGR_SRV_SUCCESS) {
+                    if(__comm_mgr_srv_uds_msg_decode(uds_msg, &out_data, &out_datalen, &arg) != COMM_MGR_SRV_SUCCESS) {
                         uds_msg->action = UDS_MASTER_MSG_ACTION_DROP; // Drop the packet, if unable to decode it (Bad UDS packet)
                         __comm_mgr_srv_uds_msg_action(uds_msg); 
                         continue; // Process next in queue
-                    }
-                    if(out_data != NULL) {
-                        COMM_MGR_SRV_DEBUG("Event %d, datalen = %d, data = %s", ev, out_datalen, out_data);
                     }
                     COMM_MGR_MSG *comm_mgr_msg = comm_mgr_get_msg(out_data, out_datalen);
                     if(comm_mgr_msg == NULL) {
                         uds_msg->action = UDS_MASTER_MSG_ACTION_DROP; // Drop the packet, if unable to get the comm msg (Bad Comm packet)
                         __comm_mgr_srv_uds_msg_action(uds_msg);
                         continue; // Process next in queue
-                    }
-                    // Process the packet    
-                    ret = comm_mgr_srv_protocol_process_packet(comm_mgr_msg);
+                    }                    
+                    COMM_MGR_SRV_DEBUG("Event %d, msg type = %d, src uid = %d, dst uid = %d, payload size = %d", 
+                                                            ev, comm_mgr_msg->hdr.msg_type, comm_mgr_msg->hdr.src_uid, 
+                                                            comm_mgr_msg->hdr.dst_uid, comm_mgr_msg->hdr.payloadSize);
+                    
+                    //COMM_MGR_SRV_MSG is the message format used by Comm Mgr to carry internal headers + actual comm msg
+                    COMM_MGR_SRV_MSG *comm_mgr_srv_msg = (COMM_MGR_SRV_MSG *)malloc(sizeof(COMM_MGR_SRV_MSG));
+                    memset(comm_mgr_srv_msg, 0, sizeof(COMM_MGR_SRV_MSG));
+                    comm_mgr_srv_msg->server_fd = *(uint32_t *)arg;
+                    comm_mgr_srv_msg->msg = comm_mgr_msg;
+                    
+                    // Process the packet
+                    // <TODO> All the ACTIONs can be offloaded to a housekeeping TASK <TODO> <TODO>
+                    ret = comm_mgr_srv_protocol_process_packet(comm_mgr_srv_msg);
                     if(ret == COMM_MGR_SRV_PROTO_BAD_PACKET) { // If its a bad packet drop it
                         uds_msg->action = UDS_MASTER_MSG_ACTION_DROP; // Drop the packet
                         __comm_mgr_srv_uds_msg_action(uds_msg);
                         continue; // Process next in queue        
                     } else if (ret == COMM_MGR_SRV_PROTO_ERR) {
                         // should we drop this current packet and ask the client to send a packet again ??
+                    } else if (ret == COMM_MGR_SRV_SUCCESS) {
+                        // Check if any actions is requested by Comm Mgr Core
+                        if (comm_mgr_srv_msg->action & COMM_MGR_SRV_MSG_ACTION_HOLD) {
+                            uds_msg->action = UDS_MASTER_MSG_ACTION_HOLD; // In case of Discovery start
+                        }
                     }
+                    // What to do for other return codes ?? <TODO>
+
                 }
-                // What to do for other return codes ?? <TODO>
+                COMM_MGR_SRV_DEBUG("Processed the DSID [0x%0x] completely for event %d", 
+                                                    master->__DSID[COMM_MGR_SRV_DSID_RECV], event);
             }
             break;
 
@@ -297,7 +317,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_process_events(uint16_t masterID, boolean isLo
             //Process all the old protocol packets as well
             {
                 while(TRUE) {
-                    uds_msg = (COMM_MGR_SRV_UDS_MSG *)utils_ds_queue_dequeue(master->__DSID[COMM_MGR_SRV_DSID_RECV]);
+                    uds_msg = (COMM_MGR_SRV_UDS_MSG *)utils_ds_queue_dequeue(master->__DSID[COMM_MGR_SRV_DSID_PROTO]);
                     if (uds_msg == NULL) {
                         break; // Queue is empty
                     }                  
@@ -306,24 +326,30 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_process_events(uint16_t masterID, boolean isLo
                         __comm_mgr_srv_uds_msg_action(uds_msg); 
                         continue; // Process next in queue
                     }
-                    COMM_MGR_MSG *comm_mgr_msg = (COMM_MGR_MSG *)arg; // arg was already in COMM_MGR_MSG format when enqueued 
-                    if(comm_mgr_msg == NULL) {
+                    // arg was already in COMM_MGR_SRV_MSG format when enqueued
+                    COMM_MGR_SRV_MSG *comm_mgr_srv_msg = (COMM_MGR_SRV_MSG *)arg;
+                    if(comm_mgr_srv_msg == NULL) {
                         uds_msg->action = UDS_MASTER_MSG_ACTION_DROP; // Drop the packet
                         __comm_mgr_srv_uds_msg_action(uds_msg);
                         continue; // What to do after dropping a protocol packet ?? 
                     }
 
                     // Send the protocol packet to the client
-                    ret = comm_mgr_srv_send_data(master, comm_mgr_msg);
+                    ret = comm_mgr_srv_send_data(master, comm_mgr_srv_msg);
                     if(ret != COMM_MGR_SRV_SUCCESS) {
                         //COMM_MGR_SRV_ERR("Failed to send the comm msg.");
                         // <TODO> We might need to set the packet to UDS_MASTER_MSG_ACTION_HOLD to try again later 
-                    } else if (ret == COMM_MGR_SRV_SUCCESS) {      
+                    } else if (ret == COMM_MGR_SRV_SUCCESS) {
+                        COMM_MGR_SRV_DEBUG("Sent the Protocol Packet msg_type [%s] to UID [%d] successfully",
+                                                                comm_mgr_srv_msg->msg->hdr.msg_type, 
+                                                                comm_mgr_srv_msg->msg->hdr.dst_uid);
                         // Upon successful send anyway drop the packet
                         uds_msg->action = UDS_MASTER_MSG_ACTION_DROP; // Drop the packet
                         __comm_mgr_srv_uds_msg_action(uds_msg);
                     }
                 }
+                COMM_MGR_SRV_DEBUG("Processed the DSID [0x%0x] completely for event %d", 
+                                                    master->__DSID[COMM_MGR_SRV_DSID_PROTO], event);
             }
             break;
 
@@ -374,6 +400,7 @@ static COMM_MGR_SRV_ERR __comm_mgr_srv_uds_msg_action(COMM_MGR_SRV_UDS_MSG *uds_
     if (uds_msg->action & UDS_MASTER_MSG_ACTION_DROP) {
         COMM_MGR_SRV_DEBUG("Dropping the UDS message");
         __comm_mgr_srv_uds_msg_free(uds_msg);
+        return COMM_MGR_SRV_SUCCESS;
     }
     COMM_MGR_SRV_DEBUG("Unsupported action. Not yet implemented");
      

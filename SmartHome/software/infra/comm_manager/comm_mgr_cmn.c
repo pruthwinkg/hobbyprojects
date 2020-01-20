@@ -24,6 +24,8 @@ COMM_MGR_MSG* comm_mgr_create_msg(uint16_t src_uid, uint16_t dst_uid,
     msg->hdr.major_ver = COMM_MGR_MSG_HDR_MAJOR_VER;
     msg->hdr.minor_ver = COMM_MGR_MSG_HDR_MINOR_VER;
     msg->hdr.msg_type = msg_type;
+    msg->hdr.src_uid = src_uid;
+    msg->hdr.dst_uid = dst_uid;
     msg->hdr.priority = COMM_MGR_MSG_PRIORITY_NORMAL; // This can be overwritten on need basis
     msg->hdr.ack_required = FALSE;
     msg->hdr.msg_backing_time = 0;    
@@ -62,7 +64,7 @@ COMM_MGR_MSG* comm_mgr_get_msg(char *msg, uint16_t len) {
     }
 
     // Even the number of bytes received also need to match with comm msg size
-    if (len >= (sizeof(COMM_MGR_MSG_HDR) + 
+    if (len > (sizeof(COMM_MGR_MSG_HDR) + 
             sizeof(char) * comm_mgr_msg->hdr.payloadSize)) {
         return NULL;
     }

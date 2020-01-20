@@ -285,6 +285,7 @@ static int __utils_ds_queue_enqueue_circular(UTILS_DS_ID id, void *data) {
     qmeta->rear = (qmeta->rear + 1)%qmeta->capacity;
     qmeta->data[qmeta->rear] = data;
     qmeta->currsize += 1;
+    return 0;
 }
 
 static void* __utils_ds_queue_dequeue_circular(UTILS_DS_ID id) {

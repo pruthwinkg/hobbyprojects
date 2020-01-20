@@ -41,12 +41,12 @@ int main() {
     COMM_MGR_LIB_DEBUG("Client created, fd = %d. Ready to send data", client.__fd);
     fflush(STDIN_FILENO);
     while( (rc=read(STDIN_FILENO, buf, sizeof(buf))) > 0) {
-        if(comm_mgr_lib_send_data(&client, buf, strlen(buf)) != COMM_MGR_LIB_SUCCESS ) {
+        if(comm_mgr_lib_send_data(&client, 1, buf, strlen(buf)) != COMM_MGR_LIB_SUCCESS ) {
             COMM_MGR_LIB_ERROR("Failed to send the data : %s", buf);
         }
         memset(buf, 0, sizeof(buf));
 
-#if 0
+#if 1
        if(comm_mgr_lib_recv_data(&client, recv_buf, sizeof(recv_buf)) != COMM_MGR_LIB_SUCCESS ) {
             COMM_MGR_LIB_ERROR("Failed to recv the data : %s", recv_buf);
        }

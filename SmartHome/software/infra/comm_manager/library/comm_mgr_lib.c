@@ -13,6 +13,8 @@
 
 #include "comm_mgr_lib.h"
 #include "comm_mgr_cmn.h"
+#include "system_mgr.h"
+
 
 boolean comm_mgr_lib_initialized = FALSE;
 
@@ -104,18 +106,26 @@ COMM_MGR_LIB_ERR comm_mgr_lib_create_client(COMM_MGR_LIB_CLIENT *client) {
             return COMM_MGR_LIB_UNKNOWN_AF_TYPE;
             break;
     }
-   
+  
+    client->__src_uid = 1; // <TODO> Either make an API or depend on sysmanager for SELF UID
     client->__fd = fd;
     client->__clientReady = 1;
 	
     return COMM_MGR_LIB_SUCCESS;    
 }
 
+/*
+    @brief This function is used to send protocol/ack/data packets. It can also e called
+           directly by the clients, in case they need to fine tune some of the default
+           comm msg parameters, though its not recommended
 
-COMM_MGR_LIB_ERR comm_mgr_lib_send_data(COMM_MGR_LIB_CLIENT *client, char *msg, int len) {
+        @param msg It can be NULL also in case of ACK and Protocol packets
+*/
+COMM_MGR_LIB_ERR comm_mgr_lib_send_msg(COMM_MGR_LIB_CLIENT *client, COMM_MGR_MSG_HDR *hdr, 
+                                      char *msg, int len) {
     struct hostent *server = &(client->server);
-
-    if ((client == NULL) || (msg == NULL)) {
+    uint32_t comm_msg_size = 0; 
+    if (client == NULL) {
         return COMM_MGR_LIB_INVALID_ARG;
     }
 
@@ -133,14 +143,108 @@ COMM_MGR_LIB_ERR comm_mgr_lib_send_data(COMM_MGR_LIB_CLIENT *client, char *msg, 
     } else {
         COMM_MGR_LIB_DEBUG("Sending via Unix Domain Socket\n");
     }
-    COMM_MGR_LIB_DEBUG("Sending msg [%s] to fd [%d]\n", msg, client->__fd);
 
-    if (send(client->__fd, msg, len, 0) == -1) {
+    COMM_MGR_MSG *comm_mgr_msg = comm_mgr_create_msg(client->__src_uid, hdr->dst_uid, hdr->msg_type, msg, len);
+    if (comm_mgr_msg == NULL) {
+        COMM_MGR_LIB_ERROR("Couldn't create the COMM_MGR_MSG packet. Not sending the msg");
+        return COMM_MGR_LIB_SEND_ERR;
+    }
+
+    /* Clients can set some more paramaters on default */
+    comm_mgr_msg->hdr.submsg_type = hdr->submsg_type; 
+    comm_mgr_msg->hdr.priority = hdr->priority;
+    comm_mgr_msg->hdr.ack_required = hdr->ack_required;
+    comm_mgr_msg->hdr.msg_backing_time = hdr->msg_backing_time;
+
+    comm_msg_size = sizeof(COMM_MGR_MSG_HDR) + (comm_mgr_msg->hdr.payloadSize * sizeof(char));
+
+    COMM_MGR_LIB_DEBUG("Sending msg type [%d], src_uid [%d], dst_uid [%d]\n", 
+                    comm_mgr_msg->hdr.msg_type, comm_mgr_msg->hdr.src_uid, comm_mgr_msg->hdr.dst_uid);
+    
+    // Now send the message to Communication Manager
+    if (send(client->__fd, (char *)comm_mgr_msg, comm_msg_size, 0) == -1) {
+        free(comm_mgr_msg);
         COMM_MGR_LIB_ERROR("Send error\n");
         return COMM_MGR_LIB_SEND_ERR;        
     }
+    
+    free(comm_mgr_msg);
     return COMM_MGR_LIB_SUCCESS;
 }
+
+
+/*
+    @brief This function is explicitly used to send user data ONLY.
+*/
+COMM_MGR_LIB_ERR comm_mgr_lib_send_data(COMM_MGR_LIB_CLIENT *client, uint16_t dst_uid, 
+                                        char *msg, int len) {
+    if((client == NULL) || (msg == NULL) || (len == 0)) {
+        COMM_MGR_LIB_ERROR("Input arguments are wrong");
+        return COMM_MGR_LIB_INVALID_ARG;
+    }
+
+    COMM_MGR_LIB_ERR ret = COMM_MGR_LIB_SUCCESS;
+    COMM_MGR_MSG_HDR hdr;
+    memset(&hdr, 0, sizeof(COMM_MGR_MSG_HDR));
+
+    // Just the dst_uid and msg type is enough
+    hdr.msg_type = COMM_MGR_MSG_DATA;
+    hdr.dst_uid = dst_uid;
+
+    ret = comm_mgr_lib_send_msg(client, &hdr, msg, len);
+
+    return ret;
+}
+
+/*
+    @brief This function is explicitly used to send ACK ONLY.
+*/
+COMM_MGR_LIB_ERR comm_mgr_lib_send_ack(COMM_MGR_LIB_CLIENT *client, uint16_t dst_uid) {
+    if(client == NULL) {
+        COMM_MGR_LIB_ERROR("Input arguments are wrong");
+        return COMM_MGR_LIB_INVALID_ARG;
+    }
+
+    COMM_MGR_LIB_ERR ret = COMM_MGR_LIB_SUCCESS;
+    COMM_MGR_MSG_HDR hdr;
+    memset(&hdr, 0, sizeof(COMM_MGR_MSG_HDR));
+
+    // Just the dst_uid and msg type is enough
+    hdr.msg_type = COMM_MGR_MSG_ACK;
+    hdr.dst_uid = dst_uid;
+
+    ret = comm_mgr_lib_send_msg(client, &hdr, NULL, 0);
+
+    return ret;
+}
+
+/*
+    @brief This function is explicitly used to send protocol packets ONLY.
+
+    Protocol is always between the initiating client and Communication 
+    Manager.
+*/
+COMM_MGR_LIB_ERR comm_mgr_lib_send_protocol(COMM_MGR_LIB_CLIENT *client, COMM_MGR_SUBMSG_TYPE submsg_type) {
+    if(client == NULL) {
+        COMM_MGR_LIB_ERROR("Input arguments are wrong");
+        return COMM_MGR_LIB_INVALID_ARG;
+    }
+
+    COMM_MGR_LIB_ERR ret = COMM_MGR_LIB_SUCCESS;
+    COMM_MGR_MSG_HDR hdr;
+    memset(&hdr, 0, sizeof(COMM_MGR_MSG_HDR));
+
+    // Just the dst_uid and msg type is enough
+    hdr.msg_type = COMM_MGR_MSG_PROTOCOL;
+    hdr.submsg_type = submsg_type;
+    hdr.dst_uid = SYS_MGR_SYSTEM_UID_COMM_MANAGER; // Communication Manager's UID always
+
+    ret = comm_mgr_lib_send_msg(client, &hdr, NULL, 0);
+
+    return ret;
+}
+
+
 
 
 COMM_MGR_LIB_ERR comm_mgr_lib_recv_data(COMM_MGR_LIB_CLIENT *client, char *msg, int len) {
@@ -162,4 +266,11 @@ COMM_MGR_LIB_ERR comm_mgr_lib_recv_data(COMM_MGR_LIB_CLIENT *client, char *msg, 
 
     return COMM_MGR_LIB_SUCCESS;
 }
+
+/******************************************************************************
+                            Internal Functions
+******************************************************************************/
+
+
+
 
