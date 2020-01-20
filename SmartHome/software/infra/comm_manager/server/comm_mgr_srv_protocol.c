@@ -165,16 +165,16 @@ COMM_MGR_SRV_ERR comm_mgr_srv_protocol_statemachine(COMM_MGR_PROTO_STATES state,
             ret = __comm_mgr_srv_protocol_discovery_start(uid); 
             break;
         case COMM_MGR_PROTO_DISCOVERY_DONE:
-            ret = __comm_mgr_srv_protocol_discovery_done(); 
+            //ret = __comm_mgr_srv_protocol_discovery_done(); 
             break;
         case COMM_MGR_PROTO_LEARNING_START:
-            ret = __comm_mgr_srv_protocol_learning_start(); 
+            //ret = __comm_mgr_srv_protocol_learning_start(); 
             break;
         case COMM_MGR_PROTO_LEARNING_DONE:
-            ret = __comm_mgr_srv_protocol_learning_start();
+            //ret = __comm_mgr_srv_protocol_learning_start();
             break;
         case COMM_MGR_PROTO_DATATRANSFER_READY:
-            ret = __comm_mgr_srv_protocol_datattransfer_ready();
+            //ret = __comm_mgr_srv_protocol_datattransfer_ready();
             break;
         default:
             COMM_MGR_SRV_ERROR("Invalid protocol state");
@@ -204,7 +204,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_protocol_process_packet(COMM_MGR_MSG *msg) {
         COMM_MGR_SRV_DEBUG("comm msg is NULL");
         return COMM_MGR_SRV_PROTO_BAD_PACKET;
     }
-    if (msg->magic != COMM_MGR_MSG_HDR_MAGIC) {
+    if (msg->hdr.magic != COMM_MGR_MSG_HDR_MAGIC) {
         COMM_MGR_SRV_DEBUG("Invalid comm msg. Wrong magic");
         return COMM_MGR_SRV_PROTO_BAD_PACKET;
     }
@@ -218,7 +218,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_protocol_process_packet(COMM_MGR_MSG *msg) {
     // inter-systems comes in future
 
     // If basic sanity passes, process the received packet and take action
-    switch(msg->msg_type) {
+    switch(msg->hdr.msg_type) {
         case COMM_MGR_MSG_PROTOCOL:
             ret =__comm_mgr_srv_protocol_process_proto_packet(msg);
             break;
@@ -235,10 +235,11 @@ COMM_MGR_SRV_ERR comm_mgr_srv_protocol_process_packet(COMM_MGR_MSG *msg) {
     return ret; 
 }
 
+
 /******************************************************************************
                              Internal Functions
 ******************************************************************************/
-static *COMM_MGR_SRV_UID_MAP __comm_mgr_srv_protocol_create_uid_tbl(uint32_t base, 
+static COMM_MGR_SRV_UID_MAP* __comm_mgr_srv_protocol_create_uid_tbl(uint32_t base, 
                                                                     uint32_t max) {
     uint32_t total_size = (max-base) * sizeof(COMM_MGR_SRV_PROTO_TBL);
     COMM_MGR_SRV_UID_MAP *uid_tbl = 
@@ -448,7 +449,7 @@ static COMM_MGR_SRV_PROTO_TBL* __comm_mgr_srv_protocol_uid_map_insert(uint16_t u
     Refer the UTILS task handler lib and its sample test example to get to know
     about the API
 */
-static COMM_MGR_SRV_MASTER* __comm_mgr_srv_protocol_get_master(void) {
+COMM_MGR_SRV_MASTER* __comm_mgr_srv_protocol_get_master(void) {
     UTILS_TASK_HANDLER_STATUS *task_st = utils_task_handler_get_taskInfo();
 
     if ((task_st == NULL) || 
@@ -460,4 +461,5 @@ static COMM_MGR_SRV_MASTER* __comm_mgr_srv_protocol_get_master(void) {
     uint16_t masterID = *(uint16_t *)task_st->__task->arg;
     return comm_mgr_srv_get_master(masterID);
 }
+
 

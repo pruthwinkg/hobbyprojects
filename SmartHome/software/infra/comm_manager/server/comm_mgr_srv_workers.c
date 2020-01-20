@@ -38,7 +38,7 @@ UTILS_TASK_HANDLER comm_mgr_srv_workers[] =
         .arg = NULL,
         .eventEnable = TRUE,
         .reg_event_cb = comm_mgr_srv_uds_process_register_events,
-    }
+    },
     {
     /* 
         Description : This task is dedicated to send responses to static dest UIDs. 
@@ -51,19 +51,19 @@ UTILS_TASK_HANDLER comm_mgr_srv_workers[] =
         .arg = NULL,
         .eventEnable = TRUE,
         .reg_event_cb = comm_mgr_srv_uds_response_static_register_events,
-    }
+    },
     /* 
         Description : This task is dedicated to send responses to dynamic dest UIDs. 
 
         Default UDS Master Instance task 
-    */   
+    */
+    {
         .taskID = COMM_MGR_SRV_TASK_ID_UDS_RES_DYNAMIC_UID,
         .handler = comm_mgr_srv_uds_response_dynamic_handler,
         .attr = NULL,
         .arg = NULL,
         .eventEnable = TRUE,
         .reg_event_cb = comm_mgr_srv_uds_response_dynamic_register_events,
-    }
-
+    },
 };
 

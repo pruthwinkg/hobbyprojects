@@ -37,11 +37,10 @@
 #include <fcntl.h> 
 
 #include "comm_mgr_srv.h"
-#include "comm_mgr_cmn.h"
-#include "comm_mgr_srv_protocol.h"
-#include "comm_mgr_srv_uds.h"
 #include "system_mgr.h"
 #include "utils.h"
+#include "comm_mgr_srv_protocol.h"
+#include "comm_mgr_srv_uds.h"
 
 // Resource :
 // https://www.geeksforgeeks.org/socket-programming-in-cc-handling-multiple-clients-on-server-without-multi-threading/
@@ -501,9 +500,24 @@ cleanup_and_exit:
             Manager.
 
 *************************************************************************/
-COMM_MGR_SRV_ERR comm_mgr_srv_send_data(COMM_MGR_MSG *msg) {
+COMM_MGR_SRV_ERR comm_mgr_srv_send_data(COMM_MGR_SRV_MASTER *master, 
+                                        COMM_MGR_MSG *msg) {
+    int rc = 0;                                        
+    if ((msg == NULL) || (master == NULL)) {
+        COMM_MGR_SRV_ERROR("Received invalid argument");
+        return COMM_MGR_SRV_INVALID_ARG;
+    } 
 
+    uint16_t len = 0;
+    len = sizeof(COMM_MGR_MSG_HDR) + (msg->hdr.payloadSize * sizeof(char));
+    
+    rc = send(master->__masterFd, (char *)msg, len, 0);
+    if (rc < 0) {
+        COMM_MGR_SRV_ERROR("  send() failed");
+        return COMM_MGR_SRV_SEND_ERR;
+    }
 
+    return COMM_MGR_SRV_SUCCESS;
 }
 
 /************************************************************************

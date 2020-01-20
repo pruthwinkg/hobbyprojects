@@ -9,6 +9,7 @@
 #include "logging.h"
 #include "utils.h"
 #include "comm_mgr_srv_enums.h"
+#include "comm_mgr_cmn.h"
 
 #define COMM_MGR_SRV_APP_NAME        "Communication Manager Server"
 
@@ -29,7 +30,7 @@ extern UTILS_TASK_HANDLER comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_MAX];
 // The last argument (void *) can be used to send complex datastrcuture
 // If void *arg is used, then the corresponding dsid_cb should be able to
 // tyoecast to apprioate type for that DSID and use it.
-typedef COMM_MGR_SRV_ERR (*comm_mgr_srv_dsid_cb)(UTILS_DS_ID, char *, uint32_t, void *, uint32_t);
+typedef COMM_MGR_SRV_ERR (*comm_mgr_srv_dsid_cb)(UTILS_DS_ID, char *, uint32_t, void *);
 
 //extern char buffer[4096]; // // TODO :Make a sophesticated data structure
 
@@ -65,7 +66,7 @@ COMM_MGR_SRV_ERR comm_mgr_create_registered_apps_list(void);
 COMM_MGR_SRV_ERR comm_mgr_srv_destroy(void);
 COMM_MGR_SRV_ERR comm_mgr_srv_init_master(COMM_MGR_SRV_MASTER *master);
 COMM_MGR_SRV_ERR comm_mgr_srv_accept_clients(uint16_t masterID);
-COMM_MGR_SRV_ERR comm_mgr_srv_send_data(COMM_MGR_MSG *msg);
+COMM_MGR_SRV_ERR comm_mgr_srv_send_data(COMM_MGR_SRV_MASTER *master, COMM_MGR_MSG *msg);
 COMM_MGR_SRV_ERR comm_mgr_create_registered_apps_list(void);
 COMM_MGR_SRV_MASTER* comm_mgr_srv_get_master(uint16_t masterID);
 

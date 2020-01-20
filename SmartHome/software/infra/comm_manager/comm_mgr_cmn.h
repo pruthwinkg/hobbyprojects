@@ -51,6 +51,6 @@ typedef struct {
 COMM_MGR_MSG* comm_mgr_create_msg(uint16_t src_uid, uint16_t dst_uid, 
                                  COMM_MGR_MSG_TYPE msg_type, char *payload, 
                                  uint16_t payloadSize);
-
+COMM_MGR_MSG* comm_mgr_get_msg(char *msg, uint16_t len);
 
 #endif /* INCLUDE_COMM_MGR_CMN_H__ */ 

@@ -8,11 +8,12 @@ set(LIBRARY_LIST "logging"
 # Set the source files required
 set(SOURCE_FILE_LIST "comm_mgr_srv.c"
                      "comm_mgr_srv_enums_defs.c"
+                     "comm_mgr_srv_protocol.c"
                      "comm_mgr_srv_uds.c"
                      "comm_mgr_srv_workers.c")
 
 # Generate the executable
-add_executable (${EXECUTABLE_NAME} ${SOURCE_FILE_LIST})
+add_executable (${EXECUTABLE_NAME} ${SOURCE_FILE_LIST} $<TARGET_OBJECTS:comm_mgr_cmn>)
 
 # Link any shared or static libraries, if required
 target_link_libraries (${EXECUTABLE_NAME} LINK_PUBLIC "${LIBRARY_LIST}")

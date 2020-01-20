@@ -2,6 +2,7 @@
     Description : This file is common code for both comm mgr server and library
 
 ******************************************************************************/
+#include <stdlib.h>
 #include "comm_mgr_cmn.h"
 
 /*

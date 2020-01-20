@@ -33,11 +33,14 @@ typedef struct {
 /*****************************************************************************
                                Public Functions
 *****************************************************************************/
-COMM_MGR_SRV_ERR comm_mgr_srv_create_uds_master(uint16_t *masterID);
+COMM_MGR_SRV_ERR comm_mgr_srv_create_uds_master(uint16_t *masterID, COMM_MGR_SRV_MASTER_INSTANCE instance);
+void* comm_mgr_srv_uds_process_handler(void *arg);
 void* comm_mgr_srv_uds_request_handler(void *arg);
-void* comm_mgr_srv_uds_response_handler(void *arg);
-COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_recv_data(UTILS_DS_ID id, char *data, uint32_t len);
-COMM_MGR_SRV_ERR comm_mgr_srv_uds_process_events(boolean isLocalMode, uint32_t event);
+void* comm_mgr_srv_uds_response_static_handler(void *arg);
+void* comm_mgr_srv_uds_response_dynamic_handler(void *arg);
+COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_recv_data(UTILS_DS_ID id, char *data, uint32_t len, void *arg);
+COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_proto_data(UTILS_DS_ID id, char *data, uint32_t len, void *arg);
+COMM_MGR_SRV_ERR comm_mgr_srv_uds_process_events(uint16_t masterID, boolean isLocalMode, uint32_t event);
 
 void comm_mgr_srv_uds_process_register_events(uint32_t taskID);
 void comm_mgr_srv_uds_response_static_register_events(uint32_t taskID);
@@ -47,8 +50,11 @@ void comm_mgr_srv_uds_response_dynamic_register_events(uint32_t taskID);
 /*****************************************************************************
                                 Internal Functions
 *****************************************************************************/
-static COMM_MGR_SRV_UDS_MSG* __comm_mgr_srv_uds_msg_encode(char *data, uint32_t datalen);
-static char* __comm_mgr_srv_uds_msg_decode(COMM_MGR_SRV_UDS_MSG *uds_msg, uint32_t *len);
+static COMM_MGR_SRV_ERR __comm_mgr_srv_uds_msg_action(COMM_MGR_SRV_UDS_MSG *uds_msg);
+static COMM_MGR_SRV_UDS_MSG* __comm_mgr_srv_uds_msg_encode(char *data, uint32_t datalen, void *arg, 
+                                                           uint32_t arg_size);
+static COMM_MGR_SRV_ERR __comm_mgr_srv_uds_msg_decode(COMM_MGR_SRV_UDS_MSG *uds_msg, char **data, uint32_t *datalen, 
+                                          void **arg);
 static void __comm_mgr_srv_uds_msg_free(COMM_MGR_SRV_UDS_MSG *uds_msg);
 
 

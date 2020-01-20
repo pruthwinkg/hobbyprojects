@@ -48,13 +48,31 @@ extern COMM_MGR_SRV_REG_APPS *comm_mgr_reg_apps_list;
 /************************************************************************/
 /*                   Internal helper functions                          */
 /************************************************************************/
+static COMM_MGR_SRV_UID_MAP* __comm_mgr_srv_protocol_create_uid_tbl(uint32_t base, uint32_t max);
+static COMM_MGR_SRV_ERR __comm_mgr_srv_protocol_process_proto_packet(COMM_MGR_MSG *msg);
+static COMM_MGR_SRV_ERR __comm_mgr_srv_protocol_process_ack_packet(COMM_MGR_MSG *msg);
+static COMM_MGR_SRV_ERR __comm_mgr_srv_protocol_process_data_packet(COMM_MGR_MSG *msg);
+static COMM_MGR_SRV_ERR __comm_mgr_srv_protocol_discovery_start(uint16_t uid);
+static boolean __comm_mgr_srv_is_uid_valid(uint16_t uid);
+static boolean __comm_mgr_srv_is_uid_static(uint16_t uid);
+static COMM_MGR_SRV_PROTO_TBL* __comm_mgr_srv_protocol_uid_map_get(uint16_t uid);
+static COMM_MGR_SRV_PROTO_TBL* __comm_mgr_srv_protocol_uid_map_insert(uint16_t uid);
 
+static COMM_MGR_SRV_MASTER* __comm_mgr_srv_protocol_get_master(void);
 
 
 /************************************************************************/
 /*                   Public  functions                                  */
-/************************************************************************/
-//COMM_MGR_SRV_ERR comm_mgr_srv_protocol_
+/************************************************************************/COMM_MGR_SRV_ERR comm_mgr_srv_protocol_init(void);
+COMM_MGR_SRV_ERR comm_mgr_srv_protocol_master_init(COMM_MGR_SRV_MASTER *master);
+COMM_MGR_SRV_ERR comm_mgr_srv_protocol_statemachine(COMM_MGR_PROTO_STATES state, uint16_t uid);
+COMM_MGR_SRV_ERR comm_mgr_srv_protocol_process_packet(COMM_MGR_MSG *msg);
+
+
+
+
+
+
 
 
 #endif /* INCLUDE_COMM_MGR_PROTOCOL_H__ */

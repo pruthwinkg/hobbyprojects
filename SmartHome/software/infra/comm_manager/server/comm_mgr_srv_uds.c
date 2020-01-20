@@ -99,9 +99,9 @@ void* comm_mgr_srv_uds_process_handler(void *arg) {
        eventsRead = utils_task_handlers_get_events(eventList, eventListSize);
        for (uint16_t i = 0; i < eventsRead; i++) {
             if(UTILS_TASK_HANDLER_EVENT_IS_GLOBAL(eventList[i])) {
-                comm_mgr_srv_uds_process_events(FALSE, UTILS_TASK_HANDLER_EVENT_GET(eventList[i]));    
+                comm_mgr_srv_uds_process_events(masterID, FALSE, UTILS_TASK_HANDLER_EVENT_GET(eventList[i]));    
             } else {
-                comm_mgr_srv_uds_process_events(TRUE, UTILS_TASK_HANDLER_EVENT_GET(eventList[i]));
+                comm_mgr_srv_uds_process_events(masterID, TRUE, UTILS_TASK_HANDLER_EVENT_GET(eventList[i]));
             }
        }
     }
@@ -126,9 +126,9 @@ void* comm_mgr_srv_uds_response_static_handler(void *arg) {
        eventsRead = utils_task_handlers_get_events(eventList, eventListSize);
        for (uint16_t i = 0; i < eventsRead; i++) {
             if(UTILS_TASK_HANDLER_EVENT_IS_GLOBAL(eventList[i])) {
-                comm_mgr_srv_uds_process_events(FALSE, UTILS_TASK_HANDLER_EVENT_GET(eventList[i]));    
+                comm_mgr_srv_uds_process_events(masterID, FALSE, UTILS_TASK_HANDLER_EVENT_GET(eventList[i]));    
             } else {
-                comm_mgr_srv_uds_process_events(TRUE, UTILS_TASK_HANDLER_EVENT_GET(eventList[i]));
+                comm_mgr_srv_uds_process_events(masterID, TRUE, UTILS_TASK_HANDLER_EVENT_GET(eventList[i]));
             }
        }
     }
@@ -153,9 +153,9 @@ void* comm_mgr_srv_uds_response_dynamic_handler(void *arg) {
        eventsRead = utils_task_handlers_get_events(eventList, eventListSize);
        for (uint16_t i = 0; i < eventsRead; i++) {
             if(UTILS_TASK_HANDLER_EVENT_IS_GLOBAL(eventList[i])) {
-                comm_mgr_srv_uds_process_events(FALSE, UTILS_TASK_HANDLER_EVENT_GET(eventList[i]));    
+                comm_mgr_srv_uds_process_events(masterID, FALSE, UTILS_TASK_HANDLER_EVENT_GET(eventList[i]));    
             } else {
-                comm_mgr_srv_uds_process_events(TRUE, UTILS_TASK_HANDLER_EVENT_GET(eventList[i]));
+                comm_mgr_srv_uds_process_events(masterID, TRUE, UTILS_TASK_HANDLER_EVENT_GET(eventList[i]));
             }
        }
     }
@@ -238,7 +238,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_proto_data(UTILS_DS_ID id,
 
 
 
-COMM_MGR_SRV_ERR comm_mgr_srv_uds_process_events(boolean isLocalMode, uint32_t event) {
+COMM_MGR_SRV_ERR comm_mgr_srv_uds_process_events(uint16_t masterID, boolean isLocalMode, uint32_t event) {
     COMM_MGR_SRV_LOCAL_EVENT ev = (COMM_MGR_SRV_LOCAL_EVENT)event;
     COMM_MGR_SRV_DEBUG("Processing the event = %d, (%s), mode = %s", 
                 event, DECODE_ENUM(COMM_MGR_SRV_LOCAL_EVENT, ev), isLocalMode?"local":"global");
@@ -250,7 +250,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_process_events(boolean isLocalMode, uint32_t e
     COMM_MGR_SRV_ERR ret = COMM_MGR_SRV_SUCCESS;
 
     // Check who is Master instance of this task 
-    COMM_MGR_SRV_MASTER *master = __comm_mgr_srv_protocol_get_master(); 
+    COMM_MGR_SRV_MASTER *master = comm_mgr_srv_get_master(masterID); 
     if(master == NULL) {
         COMM_MGR_SRV_ERROR("Not to able to identify the Master for the event [%d]", event);
         return COMM_MGR_SRV_UDS_PROCESS_EVENT_ERR; // What to do the packet inside the queue during this ?? 
@@ -259,54 +259,72 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_process_events(boolean isLocalMode, uint32_t e
     switch(ev) {
         case COMM_MGR_SRV_LOCAL_EVENT_RECV_READY: // Called by UDS process task
             //Process all the old data packets as well
-            while()
-            uds_msg = (COMM_MGR_SRV_UDS_MSG *)utils_ds_queue_dequeue(master->__DSID[COMM_MGR_SRV_DSID_RECV]);
-            __comm_mgr_srv_uds_msg_decode(uds_msg, &out_data, &out_datalen, NULL);
-            if(out_data != NULL) {
-                COMM_MGR_SRV_DEBUG("Event %d, datalen = %d, data = %s", ev, out_datalen, out_data);
+            {
+                while(TRUE) {
+                    uds_msg = (COMM_MGR_SRV_UDS_MSG *)utils_ds_queue_dequeue(master->__DSID[COMM_MGR_SRV_DSID_RECV]);
+                    if (uds_msg == NULL) {
+                        break; // Queue is empty
+                    }
+                    if(__comm_mgr_srv_uds_msg_decode(uds_msg, &out_data, &out_datalen, NULL) != COMM_MGR_SRV_SUCCESS) {
+                        uds_msg->action = UDS_MASTER_MSG_ACTION_DROP; // Drop the packet, if unable to decode it (Bad UDS packet)
+                        __comm_mgr_srv_uds_msg_action(uds_msg); 
+                        continue; // Process next in queue
+                    }
+                    if(out_data != NULL) {
+                        COMM_MGR_SRV_DEBUG("Event %d, datalen = %d, data = %s", ev, out_datalen, out_data);
+                    }
+                    COMM_MGR_MSG *comm_mgr_msg = comm_mgr_get_msg(out_data, out_datalen);
+                    if(comm_mgr_msg == NULL) {
+                        uds_msg->action = UDS_MASTER_MSG_ACTION_DROP; // Drop the packet, if unable to get the comm msg (Bad Comm packet)
+                        __comm_mgr_srv_uds_msg_action(uds_msg);
+                        continue; // Process next in queue
+                    }
+                    // Process the packet    
+                    ret = comm_mgr_srv_protocol_process_packet(comm_mgr_msg);
+                    if(ret == COMM_MGR_SRV_PROTO_BAD_PACKET) { // If its a bad packet drop it
+                        uds_msg->action = UDS_MASTER_MSG_ACTION_DROP; // Drop the packet
+                        __comm_mgr_srv_uds_msg_action(uds_msg);
+                        continue; // Process next in queue        
+                    } else if (ret == COMM_MGR_SRV_PROTO_ERR) {
+                        // should we drop this current packet and ask the client to send a packet again ??
+                    }
+                }
+                // What to do for other return codes ?? <TODO>
             }
-            COMM_MGR_MSG *comm_mgr_msg = comm_mgr_get_msg(out_data, out_datalen);
-            if(comm_mgr_msg == NULL) {
-                uds_msg->action = UDS_MASTER_MSG_ACTION_DROP; // Drop the packet
-                comm_mgr_srv_uds_msg_action(uds_msg);
-                return COMM_MGR_SRV_SUCCESS;
-            }
-            // Process the packet    
-            ret = comm_mgr_srv_protocol_process_packet(comm_mgr_msg);
-            if(ret === COMM_MGR_SRV_PROTO_BAD_PACKET) { // If its a bad packet drop it
-                uds_msg->action = UDS_MASTER_MSG_ACTION_DROP; // Drop the packet
-                comm_mgr_srv_uds_msg_action(uds_msg);
-                return COMM_MGR_SRV_SUCCESS;             
-            } else if (ret == COMM_MGR_SRV_PROTO_ERR) {
-                // should we drop this current packet and ask the client to send a packet again ??
-            } 
-            // What to do for other return codes ?? <TODO>
-        
             break;
 
         case COMM_MGR_SRV_LOCAL_EVENT_PROTO_SEND: // Called by response task
             //Process all the old protocol packets as well
-            while()
-            uds_msg = (COMM_MGR_SRV_UDS_MSG *)utils_ds_queue_dequeue(master->__DSID[COMM_MGR_SRV_DSID_RECV]);
-            __comm_mgr_srv_uds_msg_decode(uds_msg, NULL, 0, &arg);            
-            COMM_MGR_MSG *comm_mgr_msg = (COMM_MGR_MSG *)arg; // arg was already in COMM_MGR_MSG format when enqueued 
-            if(comm_mgr_msg == NULL) {
-                uds_msg->action = UDS_MASTER_MSG_ACTION_DROP; // Drop the packet
-                comm_mgr_srv_uds_msg_action(uds_msg);
-                return COMM_MGR_SRV_SUCCESS; // What to do after dropping a protocol packet ?? 
-            }
+            {
+                while(TRUE) {
+                    uds_msg = (COMM_MGR_SRV_UDS_MSG *)utils_ds_queue_dequeue(master->__DSID[COMM_MGR_SRV_DSID_RECV]);
+                    if (uds_msg == NULL) {
+                        break; // Queue is empty
+                    }                  
+                    if(__comm_mgr_srv_uds_msg_decode(uds_msg, NULL, 0, &arg) != COMM_MGR_SRV_SUCCESS) {
+                        uds_msg->action = UDS_MASTER_MSG_ACTION_DROP; // Drop the packet, if unable to decode it (Bad UDS packet)
+                        __comm_mgr_srv_uds_msg_action(uds_msg); 
+                        continue; // Process next in queue
+                    }
+                    COMM_MGR_MSG *comm_mgr_msg = (COMM_MGR_MSG *)arg; // arg was already in COMM_MGR_MSG format when enqueued 
+                    if(comm_mgr_msg == NULL) {
+                        uds_msg->action = UDS_MASTER_MSG_ACTION_DROP; // Drop the packet
+                        __comm_mgr_srv_uds_msg_action(uds_msg);
+                        continue; // What to do after dropping a protocol packet ?? 
+                    }
 
-            // Send the protocol packet to the client
-            ret = comm_mgr_srv_send_data(comm_mgr_msg);
-            if(ret != COMM_MGR_SRV_SUCCESS) {
-                COMM_MGR_SRV_ERR("Failed to send the comm msg.");
-                // <TODO> We might need to set the packet to UDS_MASTER_MSG_ACTION_HOLD to try again later 
-            } else if (ret == COMM_MGR_SRV_SUCCESS) {                
-                // Upon successful send anyway drop the packet
-                uds_msg->action = UDS_MASTER_MSG_ACTION_DROP; // Drop the packet
-                comm_mgr_srv_uds_msg_action(uds_msg);
+                    // Send the protocol packet to the client
+                    ret = comm_mgr_srv_send_data(master, comm_mgr_msg);
+                    if(ret != COMM_MGR_SRV_SUCCESS) {
+                        //COMM_MGR_SRV_ERR("Failed to send the comm msg.");
+                        // <TODO> We might need to set the packet to UDS_MASTER_MSG_ACTION_HOLD to try again later 
+                    } else if (ret == COMM_MGR_SRV_SUCCESS) {      
+                        // Upon successful send anyway drop the packet
+                        uds_msg->action = UDS_MASTER_MSG_ACTION_DROP; // Drop the packet
+                        __comm_mgr_srv_uds_msg_action(uds_msg);
+                    }
+                }
             }
-            
             break;
 
         default:
@@ -336,6 +354,9 @@ void comm_mgr_srv_uds_response_dynamic_register_events(uint32_t taskID) {
 }
 
 
+/*******************************************************************************/
+/*              Internal functions                                             */
+/*******************************************************************************/
 /*
     This function executes the action/s set in the uds message
     This can be called by a dedicated task or by one of the existing
@@ -344,7 +365,7 @@ void comm_mgr_srv_uds_response_dynamic_register_events(uint32_t taskID) {
     A UDS message can have multiple actions also set at the same time.
     If DROP is set all other actions will be ignored.
 */
-COMM_MGR_SRV_ERR comm_mgr_srv_uds_msg_action(COMM_MGR_SRV_UDS_MSG *uds_msg) {
+static COMM_MGR_SRV_ERR __comm_mgr_srv_uds_msg_action(COMM_MGR_SRV_UDS_MSG *uds_msg) {
     if(uds_msg == NULL) {
         COMM_MGR_SRV_ERROR("Bad UDS packet. Unable to take action");
         return COMM_MGR_SRV_UDS_BAD_PACKET;
@@ -359,9 +380,8 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_msg_action(COMM_MGR_SRV_UDS_MSG *uds_msg) {
     return COMM_MGR_SRV_SUCCESS;
 }
 
-/*******************************************************************************/
-/*              Internal functions                                             */
-/*******************************************************************************/
+
+
 // This function will also allocate memory. So remember to free() it
 // If datalen or arg_size is 0, then the encoding assumes that, its already been allocated somewhere
 static COMM_MGR_SRV_UDS_MSG* __comm_mgr_srv_uds_msg_encode(char *data, uint32_t datalen, void *arg, uint32_t arg_size) {
@@ -397,23 +417,24 @@ static COMM_MGR_SRV_UDS_MSG* __comm_mgr_srv_uds_msg_encode(char *data, uint32_t 
     return uds_msg;
 }
 
-static void __comm_mgr_srv_uds_msg_decode(COMM_MGR_SRV_UDS_MSG *uds_msg, char **data, uint32_t *datalen,
+static COMM_MGR_SRV_ERR __comm_mgr_srv_uds_msg_decode(COMM_MGR_SRV_UDS_MSG *uds_msg, char **data, uint32_t *datalen,
                                           void **arg) {
-    if(uds_msg == NULL) {
-        return NULL;
+    if(uds_msg == NULL) {        
+        return COMM_MGR_SRV_UDS_BAD_PACKET;
     }
     // Check for the validity of the UDS MSG    
     if(uds_msg->magic != UDS_MASTER_MSG_MAGIC_NUM) {
-        return NULL;
+        return COMM_MGR_SRV_UDS_BAD_PACKET;
     }
    
     if (data != NULL) { 
         *data = uds_msg->uds_data;
-        *len = uds_msg->uds_datalen;
+        *datalen = uds_msg->uds_datalen;
     }
     if (arg != NULL) {
         *arg = uds_msg->arg;
     }
+    return COMM_MGR_SRV_SUCCESS;
 }
 
 // Free everything even if not allocated during UDS encode
