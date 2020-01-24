@@ -324,8 +324,18 @@ static COMM_MGR_SRV_ERR __comm_mgr_srv_protocol_process_data_packet(COMM_MGR_SRV
 
         return ret;
     }
-    
-    // case 2 : If src UID and dest UID is already present
+
+    // Check the current protocol status for the src UID
+    if(proto_tbl->proto_state != COMM_MGR_PROTO_DATATRANSFER_READY) {
+        // If the src UID is still in protocol stages, should drop this data packet.
+        COMM_MGR_SRV_DEBUG("Client UID [%d] sent a data packet while in protocol state [%d]",
+                            srv_msg->msg->hdr.src_uid, proto_tbl->proto_state);
+        srv_msg->action |= COMM_MGR_SRV_MSG_ACTION_DROP;
+        return COMM_MGR_SRV_SUCCESS;
+    }
+
+
+    // case 2 : If src UID and dest UID is already present in the protocol table
 
 
     // case 3 : Only if src UID is present

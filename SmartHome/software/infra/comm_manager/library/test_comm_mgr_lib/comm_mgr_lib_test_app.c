@@ -20,8 +20,10 @@
 int main() {
     COMM_MGR_LIB_CLIENT client;
     COMM_MGR_LIB_ERR rc = COMM_MGR_LIB_SUCCESS;
-    char buf[4096];
+    char buf[8096];
     char recv_buf[4096];
+    COMM_MGR_MSG *comm_msg;
+    int len = 0;
 
     comm_mgr_lib_init(LOG_LVL_DEBUG);
     COMM_MGR_LIB_TRACE("Starting the test of %s\n", COMM_MGR_LIB_NAME);
@@ -31,27 +33,42 @@ int main() {
 
     COMM_MGR_LIB_DEBUG("Starting %s test for COMM_MGR_IPC_LIB_AF_UNIX", COMM_MGR_LIB_NAME);
 
-    rc = comm_mgr_lib_create_client(&client);
-    if(rc != COMM_MGR_LIB_SUCCESS) { 
+    COMM_MGR_LIB_CLIENT_ID cid = comm_mgr_lib_create_client(&client);
+
+    if(cid == COMM_MGR_LIB_INVALID_CLIENT) { 
         COMM_MGR_LIB_ERROR("%s test failed for COMM_MGR_IPC_LIB_AF_UNIX, rc = 0x%0x", COMM_MGR_LIB_NAME, rc);
-        COMM_MGR_LIB_ERROR("Error code : %s\n", DECODE_ENUM(COMM_MGR_LIB_ERR, rc));
         return -1;
     }
 
-    COMM_MGR_LIB_DEBUG("Client created, fd = %d. Ready to send data", client.__fd);
+    COMM_MGR_LIB_DEBUG("Client created, id = %d. Ready to send data", cid);
     fflush(STDIN_FILENO);
     while( (rc=read(STDIN_FILENO, buf, sizeof(buf))) > 0) {
-        if(comm_mgr_lib_send_data(&client, 1, buf, strlen(buf)) != COMM_MGR_LIB_SUCCESS ) {
+        if(comm_mgr_lib_send_data(cid, 1, buf, strlen(buf)) != COMM_MGR_LIB_SUCCESS ) {
             COMM_MGR_LIB_ERROR("Failed to send the data : %s", buf);
         }
+        
         memset(buf, 0, sizeof(buf));
-
 #if 1
-       if(comm_mgr_lib_recv_data(&client, recv_buf, sizeof(recv_buf)) != COMM_MGR_LIB_SUCCESS ) {
+       len = comm_mgr_lib_recv_data(cid, recv_buf, sizeof(recv_buf));
+       if(len < 0) {
             COMM_MGR_LIB_ERROR("Failed to recv the data : %s", recv_buf);
+            continue;
        }
-       COMM_MGR_LIB_TRACE("Data received : %s", recv_buf);
-       memset(recv_buf, 0, sizeof(recv_buf));
+
+       comm_msg = comm_mgr_get_msg(recv_buf, len);
+       
+       if (comm_msg == NULL) {
+            COMM_MGR_LIB_ERROR("Received invalid data from Communication Manager");
+            continue;
+       }
+
+       COMM_MGR_LIB_TRACE("Data received [%d]: msg_type [%d], submsg_type [%d], src_uid [%d], dst_uid [%d]", 
+                                                    len, comm_msg->hdr.msg_type, comm_msg->hdr.submsg_type, 
+                                                    comm_msg->hdr.src_uid, comm_msg->hdr.dst_uid);
+
+       comm_mgr_print_msg_hdr(comm_msg, buf, sizeof(buf));
+       COMM_MGR_LIB_PRINT("%s", buf); 
+
 #endif       
     }
     if(rc != COMM_MGR_LIB_SUCCESS) {
@@ -66,15 +83,16 @@ int main() {
 
     COMM_MGR_LIB_DEBUG("Starting %s test for COMM_MGR_IPC_LIB_AF_INET", COMM_MGR_LIB_NAME);
 
-    rc = comm_mgr_lib_create_client(&client); 
-    if(rc != COMM_MGR_LIB_SUCCESS) {
+    cid = comm_mgr_lib_create_client(&client); 
+    if(cid == COMM_MGR_LIB_INVALID_CLIENT) {
         COMM_MGR_LIB_ERROR("%s test failed for COMM_MGR_IPC_LIB_AF_INET, rc = 0x%0x", COMM_MGR_LIB_NAME, rc);
+        return -1;
     }
     
     COMM_MGR_LIB_DEBUG("Client created. Ready to send data");
-    comm_mgr_lib_send_data(&client, "Hello. How r u", 20);
+    comm_mgr_lib_send_data(cid, "Hello. How r u", 20);
     while( (rc=read(STDIN_FILENO, buf, sizeof(buf))) > 0) {
-        comm_mgr_lib_send_data(&client, buf, strlen(buf));
+        comm_mgr_lib_send_data(cid, buf, strlen(buf));
         memset(buf, 0, sizeof(buf));
     }
     if(rc != COMM_MGR_LIB_SUCCESS) {

@@ -304,6 +304,12 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_process_events(uint16_t masterID, boolean isLo
                         if (comm_mgr_srv_msg->action & COMM_MGR_SRV_MSG_ACTION_HOLD) {
                             uds_msg->action = UDS_MASTER_MSG_ACTION_HOLD; // In case of Discovery start
                         }
+
+                        if (comm_mgr_srv_msg->action & COMM_MGR_SRV_MSG_ACTION_DROP) {
+                            uds_msg->action = UDS_MASTER_MSG_ACTION_DROP; // Drop the packet
+                            __comm_mgr_srv_uds_msg_action(uds_msg);
+                            continue; // Process next in queue
+                        }
                     }
                     // What to do for other return codes ?? <TODO>
 
@@ -340,7 +346,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_process_events(uint16_t masterID, boolean isLo
                         //COMM_MGR_SRV_ERR("Failed to send the comm msg.");
                         // <TODO> We might need to set the packet to UDS_MASTER_MSG_ACTION_HOLD to try again later 
                     } else if (ret == COMM_MGR_SRV_SUCCESS) {
-                        COMM_MGR_SRV_DEBUG("Sent the Protocol Packet msg_type [%s] to UID [%d] successfully",
+                        COMM_MGR_SRV_DEBUG("Sent the Protocol Packet msg_type [%d] to UID [%d] successfully",
                                                                 comm_mgr_srv_msg->msg->hdr.msg_type, 
                                                                 comm_mgr_srv_msg->msg->hdr.dst_uid);
                         // Upon successful send anyway drop the packet

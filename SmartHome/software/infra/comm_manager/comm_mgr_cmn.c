@@ -3,6 +3,8 @@
 
 ******************************************************************************/
 #include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
 #include "comm_mgr_cmn.h"
 
 /*
@@ -32,13 +34,26 @@ COMM_MGR_MSG* comm_mgr_create_msg(uint16_t src_uid, uint16_t dst_uid,
 
     // Payloads can be NULL in case of protocol packets
     msg->hdr.payloadSize = payloadSize;
-    if (payloadSize > 0) { 
-        msg->payload = payload;
+    if (payloadSize > 0) {
+        msg->payload = (char *)malloc(payloadSize);
+        memcpy(msg->payload, payload, payloadSize);
     } else {
         msg->payload = NULL;
     }
 
     return msg;
+}
+
+void comm_mgr_destroy_msg(COMM_MGR_MSG *msg) {
+    if (msg == NULL) {
+        return;
+    }
+
+    if (msg->payloadSize > 0) {
+        free(msg->payload);
+    }
+
+    free(msg);
 }
 
 /*
@@ -71,3 +86,40 @@ COMM_MGR_MSG* comm_mgr_get_msg(char *msg, uint16_t len) {
 
     return comm_mgr_msg;
 }
+
+/*
+    @brief This function will dislay the COMM_MSG_HDR in a human reable format
+            in the buf passed by the application. 
+
+    @param, len Length of buf passed
+
+    Note :  This function doesnt validate to check if the sanity of header is fine.
+        It blindly prints all the header information
+*/
+void comm_mgr_print_msg_hdr(COMM_MGR_MSG *msg, char *buf, uint16_t len) {
+    if ((buf == NULL) || (len == 0) || (msg == NULL)) {
+        return;
+    }
+    memset(buf, 0, len);
+
+    snprintf(buf, len, "\nCommunication Manager Msg Header Info : \n");
+    snprintf(buf + strlen(buf), len, "\t Magic                    : 0x%0x\n", msg->hdr.magic);
+    snprintf(buf + strlen(buf), len, "\t Major ver                : 0x%0x\n", msg->hdr.major_ver);
+    snprintf(buf + strlen(buf), len, "\t Minor ver                : 0x%0x\n", msg->hdr.minor_ver);
+    snprintf(buf + strlen(buf), len, "\t Msg type                 : 0x%0x\n", msg->hdr.msg_type);
+    snprintf(buf + strlen(buf), len, "\t SubMsg type              : 0x%0x\n", msg->hdr.submsg_type);
+    snprintf(buf + strlen(buf), len, "\t Src UID                  : 0x%0x\n", msg->hdr.src_uid);
+    snprintf(buf + strlen(buf), len, "\t Dst UID                  : 0x%0x\n", msg->hdr.dst_uid);
+    snprintf(buf + strlen(buf), len, "\t Priority                 : 0x%0x\n", msg->hdr.priority);
+    snprintf(buf + strlen(buf), len, "\t ACK Required             : 0x%0x\n", msg->hdr.ack_required);
+    snprintf(buf + strlen(buf), len, "\t Msg backing time(mins)   : 0x%0x\n", msg->hdr.msg_backing_time);
+    snprintf(buf + strlen(buf), len, "\t Payload Size             : 0x%0x\n", msg->hdr.ack_required);
+    
+}
+
+
+
+
+
+
+
