@@ -637,13 +637,9 @@ static COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_handler(COMM_MGR_LIB_CLIENT *cli
 
     switch(msg->hdr.submsg_type) {
         case COMM_MGR_SUBMSG_DISCOVERY:
-            __comm_mgr_lib_protocol_statemachine(client, msg);
-            break;
         case COMM_MGR_SUBMSG_LEARNING:
-
-            break;
         case COMM_MGR_SUBMSG_DATATXREADY:
-
+            __comm_mgr_lib_protocol_statemachine(client, msg);
             break;
         default:
             COMM_MGR_LIB_ERROR("Received a bad protocol packet"); 
@@ -723,14 +719,8 @@ COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_statemachine(COMM_MGR_LIB_CLIENT *clien
         case COMM_MGR_PROTO_DISCOVERY_DONE:
             ret = __comm_mgr_srv_protocol_discovery_done(client, msg); 
             break;
-        case COMM_MGR_PROTO_LEARNING_START:
-            //ret = __comm_mgr_srv_protocol_learning_start(); 
-            break;
-        case COMM_MGR_PROTO_LEARNING_DONE:
-            //ret = __comm_mgr_srv_protocol_learning_start();
-            break;
         case COMM_MGR_PROTO_DATATRANSFER_READY:
-            //ret = __comm_mgr_srv_protocol_datattransfer_ready();
+            ret = __comm_mgr_srv_protocol_datatransfer_ready(client, msg);
             break;
         default:
             COMM_MGR_SRV_ERROR("Invalid protocol state");
@@ -800,16 +790,24 @@ send_nack:
        - Wait for either Learning packets OR DataTransfer Ready packet
        - Change the proto state of the client to learning start / DataTransfer Ready
        - Discard any user packets
+
+    Note : Moving the client to Data Transfer Ready doesn tmean that the Client can 
+    send packets to any Destinations. It just indicates that the client has been 
+    Discovered by the Communication Manager and it can/cannot send the packets to
+    a particular destination depeding on whether that Dest UID has been learnt by the
+    Communication manager
 */
-COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_discovery_done(COMM_MGR_LIB_CLIENT *client) {
+COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_discovery_done(COMM_MGR_LIB_CLIENT *client,
+                                                        COMM_MGR_MSG *msg) {
     if (msg->hdr.msg_type != COMM_MGR_MSG_ACK) {
         COMM_MGR_LIB_ERROR("Received a bad ack packet");
         goto send_nack;
     }
 
-    // Move the current state of the Client to Learning start
-    client->client_ptr->__proto_state = COMM_MGR_PROTO_LEARNING_START;
+    // Move the current state of the Client to Data transfer ready
+    client->client_ptr->__proto_state = COMM_MGR_PROTO_DATATRANSFER_READY;
 
+    return COMM_MGR_SRV_SUCCESS;
 send_nack:
     // We need ask the Communication Manager to send the discovery ACK packet again. Send NACK
      if(comm_mgr_lib_send_ack(client->__clientID, SYS_MGR_SYSTEM_UID_COMM_MANAGER, 
@@ -824,12 +822,87 @@ send_nack:
     Discovered yet. The lib will drop all the user packets to the dest UID till it is
     data transfer ready
 
-    This function should the below:
-        - If 
+    Format :
+
+    msg_type = PROTOCOL | submsg_type = LEARNING | payloadsize = 5 (bytes) | 
+                         *payload = COMM_MGR_MSG_PROTOCOL_MAGIC (16) | Dest UID (16)
+
+
 */
-COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_learning_start(COMM_MGR_LIB_CLIENT *client) {
+COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_learning(COMM_MGR_LIB_CLIENT *client,
+                                                  COMM_MGR_MSG *msg,
+                                                  uint8_t isLearnt) {
+
+    if (msg->hdr.payloadSize != (16*5)) {
+        COMM_MGR_LIB_ERROR("Bad payloadsize received. Discarding"); 
+        goto send_nack;
+    }
+
+    uint16_t magic;
+    memcpy(&magic, &(msg->payload[0]), sizeof(uint16_t));
+    if(magic != COMM_MGR_MSG_PROTOCOL_MAGIC) {
+        COMM_MGR_LIB_ERROR("Bad payloadsize received. Discarding"); 
+        goto send_nack;
+    }
+
+    uint16_t dest_uid;
+    memcpy(&dest_uid, &(msg->payload[2]), sizeof(uint16_t));    
+
+    // Validate the Dest UID received
+    if((dest_uid >= comm_mgr_lib_static_uid_base) && (dest_uid < comm_mgr_lib_static_uid_max)) {
+        uint16_t index = dest_uid - comm_mgr_lib_static_uid_base;
+        comm_mgr_lib_static_uid_map[index] = isLearnt;
+    } else if((dest_uid >= comm_mgr_lib_dynamic_uid_base) && (dest_uid < comm_mgr_lib_dynamic_uid_max)) {
+        uint16_t index = dest_uid - comm_mgr_lib_dynamic_uid_base;
+        comm_mgr_lib_dynamic_uid_map[index] = isLearnt;      
+    } else {
+        COMM_MGR_LIB_ERROR("Bad Dest UID received in the Learning protocol packet");
+        goto send_nack;
+    }
+
+    return COMM_MGR_SRV_SUCCESS;
+
+send_nack:
+    // We need ask the Communication Manager to send the learning packet again. Send NACK
+     if(comm_mgr_lib_send_ack(client->__clientID, SYS_MGR_SYSTEM_UID_COMM_MANAGER, 
+                COMM_MGR_SUBMSG_PROTO_NACK) != COMM_MGR_LIB_SUCCESS) {
+        COMM_MGR_LIB_ERROR("Failed to send NACK PROTO packet to Communication Manager");
+    }
+    return COMM_MGR_LIB_PROTO_BAD_PACKET;
+}
 
 
+/*
+    This function is the entry point once the client finishes the Discovery stages. 
+
+    Now depending on the Dest UID the packets can be forwarded or dropped
+
+    Format :
+
+    msg_type = PROTOCOL | submsg_type = LEARNING | payloadsize = 5 (bytes) | 
+                         *payload = COMM_MGR_MSG_PROTOCOL_MAGIC (16) | Dest UID (16)
+
+
+    We can get LEARNING/DATATXREADY for a Dest UID depeding on whether the Dets UID is
+    not learnt or learnt by the Communuication Manager
+*/
+COMM_MGR_LIB_ERR __comm_mgr_srv_protocol_datatransfer_ready(COMM_MGR_LIB_CLIENT *client, 
+                                                             COMM_MGR_MSG *msg) {
+
+    COMM_MGR_LIB_ERR ret = COMM_MGR_SRV_SUCCESS;
+    // The sub msg can be either Data Tx Ready or Learning. All others are error cases
+    if (msg->hdr.submsg_type == COMM_MGR_SUBMSG_DATATXREADY) {
+        ret = __comm_mgr_lib_protocol_learning(client, msg, 1);
+    } else if (msg->hdr.submsg_type == COMM_MGR_SUBMSG_LEARNING) {
+        ret = __comm_mgr_lib_protocol_learning(client, msg, 0);
+    } else {
+        // Will just ignore the other protcol packets
+        // <TODO> Can Communiation Manager forecfully send the Discovery again, to ask the client
+        // to be discovered again ???/ Will handle the case later
+        return COMM_MGR_LIB_PROTO_BAD_PACKET;
+    }
+
+    return ret;
 }
 
 
@@ -844,21 +917,28 @@ COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_learning_start(COMM_MGR_LIB_CLIENT *cli
     Communication Manager can again send via COMM_MGR_MSG_SYSTEM msgs (very rare)
 
     Data Format of Payload : (each is 16 bit)        
-        payloadsize = 16 * 4
-        static_uid_max | static_uid_base | dynamic_uid_max | dynamic_uid_base
+        payloadsize = 16 * 5
+        COMM_MGR_MSG_PROTOCOL_MAGIC | static_uid_max | static_uid_base | dynamic_uid_max | dynamic_uid_base
 */
 COMM_MGR_LIB_ERR __comm_mgr_lib_update_local_uid_map(COMM_MGR_MSG *msg) {
     
     if ((msg->hdr.msg_type == COMM_MGR_MSG_PROTOCOL) &&
        (msg->hdr.submsg_type == COMM_MGR_SUBMSG_DISCOVERY)) { // First time
-        if (msg->hdr.payloadSize != (16*4)) {
+        if (msg->hdr.payloadSize != (16*5)) {
             COMM_MGR_LIB_ERROR("Bad payloadsize received. Discarding"); 
             return COMM_MGR_LIB_BAD_PACKET;
         }
-        memcpy(&comm_mgr_lib_static_uid_max, &(msg->payload[0]), sizeof(uint16_t));       
-        memcpy(&comm_mgr_lib_static_uid_base, &(msg->payload[2]), sizeof(uint16_t));       
-        memcpy(&comm_mgr_lib_dynamic_uid_max, &(msg->payload[4]), sizeof(uint16_t));       
-        memcpy(&comm_mgr_lib_dynamic_uid_base, &(msg->payload[6]), sizeof(uint16_t));               
+        uint16_t magic;
+        memcpy(&magic, &(msg->payload[0]), sizeof(uint16_t));
+        if(magic != COMM_MGR_MSG_PROTOCOL_MAGIC) {
+            COMM_MGR_LIB_ERROR("Bad payloadsize received. Discarding"); 
+            return COMM_MGR_LIB_BAD_PACKET;
+        }
+
+        memcpy(&comm_mgr_lib_static_uid_max, &(msg->payload[2]), sizeof(uint16_t));       
+        memcpy(&comm_mgr_lib_static_uid_base, &(msg->payload[4]), sizeof(uint16_t));       
+        memcpy(&comm_mgr_lib_dynamic_uid_max, &(msg->payload[6]), sizeof(uint16_t));       
+        memcpy(&comm_mgr_lib_dynamic_uid_base, &(msg->payload[8]), sizeof(uint16_t));               
     } else if (msg->hdr.msg_type == COMM_MGR_MSG_SYSTEM) { // Update case
         COMM_MGR_LIB_TRACE("Not yet implemented!!!!");
         return COMM_MGR_LIB_BAD_PACKET;
