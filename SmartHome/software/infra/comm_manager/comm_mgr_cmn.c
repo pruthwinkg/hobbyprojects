@@ -49,7 +49,7 @@ void comm_mgr_destroy_msg(COMM_MGR_MSG *msg) {
         return;
     }
 
-    if (msg->payloadSize > 0) {
+    if (msg->hdr.payloadSize > 0) {
         free(msg->payload);
     }
 

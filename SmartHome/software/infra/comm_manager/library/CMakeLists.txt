@@ -2,10 +2,11 @@
 set (LIB_NAME "comm_mgr") 
 
 # Select whether to generate shared or static library @params: ON OFF
-set (GENERATE_SHARED_LIB ON)
+set (GENERATE_SHARED_LIB OFF)
 
 # Set the static and shared libraries on which the executable is dependent
-set(LIBRARY_LIST "logging")
+set(LIBRARY_LIST "logging"
+                 "utils")
 
 # Set the source files required
 set (SOURCE_FILE_LIST "comm_mgr_lib.c"

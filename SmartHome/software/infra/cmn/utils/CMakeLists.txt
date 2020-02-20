@@ -2,7 +2,7 @@
 set (LIB_NAME "utils") 
 
 # Select whether to generate shared or static library @params: ON OFF
-#set (GENERATE_SHARED_LIB ON)
+set (GENERATE_SHARED_LIB ON)
 
 # Set the static and shared libraries on which the executable is dependent
 set(LIBRARY_LIST "logging"

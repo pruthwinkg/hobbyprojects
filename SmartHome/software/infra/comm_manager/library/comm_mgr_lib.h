@@ -8,6 +8,7 @@
 #include <netdb.h>
 #include "smarthome_essentials.h"
 #include "logging.h"
+#include "utils.h"
 #include "comm_mgr_lib_enums.h"
 #include "comm_mgr_cmn.h"
 #include "system_mgr.h"
@@ -77,14 +78,14 @@ typedef struct {
 /******************************************************************************/
 /*          Public Functions                                                  */
 /******************************************************************************/
-COMM_MGR_LIB_ERR comm_mgr_lib_init(LOG_LEVEL level);
+COMM_MGR_LIB_ERR comm_mgr_lib_init(LOG_LEVEL level, uint16_t src_uid);
 COMM_MGR_LIB_ERR comm_mgr_lib_destroy(void);
 COMM_MGR_LIB_CLIENT_ID comm_mgr_lib_create_client(COMM_MGR_LIB_CLIENT *client);
 COMM_MGR_LIB_ERR comm_mgr_lib_delete_client(COMM_MGR_LIB_CLIENT_ID id);
 int comm_mgr_lib_recv_data(COMM_MGR_LIB_CLIENT_ID id, char *msg, int len);
 COMM_MGR_LIB_ERR comm_mgr_lib_send_data(COMM_MGR_LIB_CLIENT_ID id, uint16_t dst_uid, 
                                         char *msg, int len);
-COMM_MGR_LIB_ERR comm_mgr_lib_send_ack(COMM_MGR_LIB_CLIENT_ID id, uint16_t dst_uid);                                        
+COMM_MGR_LIB_ERR comm_mgr_lib_send_ack(COMM_MGR_LIB_CLIENT_ID id, uint16_t dst_uid, COMM_MGR_SUBMSG_TYPE submsg);                                        
 
 /******************************************************************************/
 /*          Internal Functions                                                */
@@ -97,8 +98,15 @@ static COMM_MGR_LIB_ERR  __comm_mgr_lib_receive_packets(COMM_MGR_LIB_CLIENT_ID i
 static COMM_MGR_LIB_ERR __comm_mgr_lib_send_msg(COMM_MGR_LIB_CLIENT *client, COMM_MGR_MSG_HDR *hdr,
                                         char *msg, int len);
 static COMM_MGR_LIB_ERR __comm_mgr_lib_send_protocol(COMM_MGR_LIB_CLIENT *client, 
-                                            COMM_MGR_SUBMSG_TYPE submsg_type);
-
-
+                                            COMM_MGR_SUBMSG_TYPE submsg_type,
+                                            char *payload, uint16_t payloadsize);
+static COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_handler(COMM_MGR_LIB_CLIENT *client, COMM_MGR_MSG *msg);
+static COMM_MGR_LIB_ERR __comm_mgr_lib_ack_handler(COMM_MGR_LIB_CLIENT *client, COMM_MGR_MSG *msg);                                           
+static COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_statemachine(COMM_MGR_LIB_CLIENT *client, COMM_MGR_MSG *msg);
+static COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_discovery_start(COMM_MGR_LIB_CLIENT *client, COMM_MGR_MSG *msg);
+static COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_discovery_done(COMM_MGR_LIB_CLIENT *client, COMM_MGR_MSG *msg);
+static COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_learning(COMM_MGR_LIB_CLIENT *client, COMM_MGR_MSG *msg, uint8_t isLearnt);
+static COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_datatransfer_ready(COMM_MGR_LIB_CLIENT *client, COMM_MGR_MSG *msg);
+static COMM_MGR_LIB_ERR __comm_mgr_lib_update_local_uid_map(COMM_MGR_MSG *msg);
 
 #endif /* INCLUDE_COMM_MGR_LIB_H__ */

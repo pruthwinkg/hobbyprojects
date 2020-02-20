@@ -15,6 +15,8 @@
 #define TEST_COMM_MGR_LIB
 #define TEST_UNIX_AF
 
+#define TEST_COMM_MGR_LIB_UID   (10000)
+
 #ifdef TEST_COMM_MGR_LIB
 
 int main() {
@@ -25,7 +27,7 @@ int main() {
     COMM_MGR_MSG *comm_msg;
     int len = 0;
 
-    comm_mgr_lib_init(LOG_LVL_DEBUG);
+    comm_mgr_lib_init(LOG_LVL_DEBUG, TEST_COMM_MGR_LIB_UID);
     COMM_MGR_LIB_TRACE("Starting the test of %s\n", COMM_MGR_LIB_NAME);
 #ifdef TEST_UNIX_AF
     memset(&client, 0, sizeof(COMM_MGR_LIB_CLIENT));
