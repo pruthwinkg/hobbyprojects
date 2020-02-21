@@ -34,6 +34,11 @@ static boolean __utils_ds_queue_isempty(UTILS_DS_ID id);
 
 
 void utils_ds_init() {
+    if(utils_ds_initialized == TRUE) {
+        UTILS_LOG_TRACE("utils_ds library is already initialized\n");
+        return;
+    }
+
     // 0 will be treated as a unused ID
     memset(utils_ds_bitmap, 0, sizeof(utils_ds_bitmap));
 

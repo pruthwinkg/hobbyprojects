@@ -34,6 +34,7 @@ boolean comm_mgr_lib_initialized = FALSE;
 
 COMM_MGR_LIB_ERR comm_mgr_lib_init(LOG_LEVEL level, uint16_t src_uid) {
     log_lib_init(NULL, level);
+    utils_ds_init(); // Initialize utils data structure library
 
     for (uint16_t i = 0; i < COMM_MGR_LIB_MAX_CLIENTS; i++) {
         __comm_mgr_lib_clients[i].client_ptr = NULL; // This indicates Invalid client
@@ -237,6 +238,14 @@ COMM_MGR_LIB_ERR comm_mgr_lib_delete_client(COMM_MGR_LIB_CLIENT_ID id) {
           COMM_MGR_LIB_DSID_DATA_SEND - DSID for sending the Data/ack
 
           All these DSIDs are per client
+        Algorithm :
+          If there is some msg is available in the DSIDs (according to priority),
+          then the message will be dequed and sent.
+          Once a message is sent again we will check if there is any activity on readfds.
+          If so, then the message will be received and enqued.
+          Note : With this logic, always one msg is sent and any receive activity is checked.
+          And again a next msg is sent if its available in DSIDs. With this, the receiver is
+          also priortized
 */
 COMM_MGR_LIB_ERR comm_mgr_lib_server_communicator(COMM_MGR_LIB_CLIENT_ID id) {
 	uint8_t cid = COMM_MGR_LIB_GET_CLIENT_ID(id);
@@ -248,6 +257,8 @@ COMM_MGR_LIB_ERR comm_mgr_lib_server_communicator(COMM_MGR_LIB_CLIENT_ID id) {
 	boolean is_send_ready = FALSE;
 	char recv_buffer[8096];
 	int recv_count = 0;
+    COMM_MGR_MSG *msg;
+    uint32_t comm_msg_size = 0;
 
     if(cid > COMM_MGR_LIB_MAX_CLIENTS) {
         COMM_MGR_LIB_ERROR("Invalid client");
@@ -333,19 +344,37 @@ COMM_MGR_LIB_ERR comm_mgr_lib_server_communicator(COMM_MGR_LIB_CLIENT_ID id) {
 			} while(recv_count > 0);	
 		}
 
-#if 0
 		// Check if the FD is writable
-		if (FD_ISSET(__comm_mgr_lib_clients[cid].client_ptr->__fd , &working_write_fd)) {
-			// Check the send DSID if something is available to be sent
-		    (COMM_MGR_LIB_MSG *)utils_ds_queue_dequeue(__comm_mgr_lib_clients[cid].client_ptr->__DSID[COMM_MGR_LIB_DSID_SEND]);		
-			
+		if (FD_ISSET(__comm_mgr_lib_clients[cid].client_ptr->__fd , &working_write_fd)) {			
 			do {
+                // Check the send DSID if something is available to be sent
+                msg = (COMM_MGR_LIB_MSG *)utils_ds_queue_dequeue( \
+                            __comm_mgr_lib_clients[cid].client_ptr->__DSID[COMM_MGR_LIB_DSID_SEND]);		
+                if(msg == NULL) { // If DSID is empty, abort sending till there is some activity on this DSID
+                    FD_ZERO(&working_write_fd);
+                    break;
+                }
+                comm_msg_size = COMM_MGR_MSG_SIZE(msg);
+                send_count = send(__comm_mgr_lib_clients[cid].client_ptr->__fd, msg, comm_msg_size, 0);
+                if (send_count < 0) {
+                    if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                        COMM_MGR_LIB_TRACE("Communication Manager is not ready right now, try again later");
+                        break; // Its okay. But should we enqueue the msg back to queue to try again later
+                    } else {
+                        COMM_MGR_LIB_ERROR("Error in sending");
+                        break; // This is very bad case. Handle it
+                    }
+                } else if(send_count == 0) {
+                    COMM_MGR_LIB_TRACE("Communication Manager cannot accept data right now, try again later");
+                    break; // Its okay. But should we enqueue the msg back to queue to try again later
+                }
 
-			} while(); // Keep sending till the SEND_DSID is empty
+                if(send_count == comm_msg_size) {
+                    COMM_MGR_LIB_DEBUG("Sent the message to Communication Manager successfully");                    
+                }
+			} while(send_count > 0);
 		}
-#endif
 		
-
 	} while(end_lib == FALSE);
 
 cleanup_and_exit:
@@ -564,7 +593,8 @@ static COMM_MGR_LIB_ERR __comm_mgr_lib_send_msg(COMM_MGR_LIB_CLIENT *client, COM
     comm_mgr_msg->hdr.ack_required = hdr->ack_required;
     comm_mgr_msg->hdr.msg_backing_time = hdr->msg_backing_time;
 
-    comm_msg_size = sizeof(COMM_MGR_MSG_HDR) + (comm_mgr_msg->hdr.payloadSize * sizeof(char));
+    //comm_msg_size = sizeof(COMM_MGR_MSG_HDR) + (comm_mgr_msg->hdr.payloadSize * sizeof(char));
+    comm_msg_size = COMM_MGR_MSG_SIZE(comm_mgr_msg);
 
     COMM_MGR_LIB_DEBUG("Sending msg type [%d], src_uid [%d], dst_uid [%d]\n", 
                     comm_mgr_msg->hdr.msg_type, comm_mgr_msg->hdr.src_uid, comm_mgr_msg->hdr.dst_uid);

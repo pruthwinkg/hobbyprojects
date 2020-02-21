@@ -44,6 +44,7 @@ typedef struct {
     char *payload;
 } COMM_MGR_MSG;
 
+#define COMM_MGR_MSG_SIZE(msg)  (sizeof(COMM_MGR_MSG_HDR) + (msg->hdr.payloadSize * sizeof(char)))
 
 /*********************************************************************************
                                 Public Functions
