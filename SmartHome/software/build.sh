@@ -52,6 +52,20 @@ function run_generate_cscope_ctags() {
     echo "Generated ctags and cscope. Ready for use (cscope -d)"
 }
 
+function run_install_tools() {
+    echo "This will install build-tools, vim, cscope, ctags, tmux, cmake"
+
+    sudo apt update
+    apt install build-essential
+    apt-get install manpages-dev
+    apt install vim
+    apt install cscope
+    apt install ctags
+    apt install tmux
+    apt install cmake
+    
+}
+
 option="${1}" 
 case ${option} in 
    -C) CMAKE_DIR="${2}" 
@@ -85,6 +99,8 @@ case ${option} in
       ;;
    -s) run_generate_cscope_ctags
       ;;
+   -i) run_install_tools
+      ;;
 
    *)  
    printf "`basename ${0}`:usage:
@@ -95,7 +111,8 @@ case ${option} in
                 [-G <build dir> (Runs 'Cmake and make all with debug')]
                 [-t <build dir> (Runs 'Cmake and make all with test code')]
                 [-Gt <build dir> (Runs 'Cmake and make all with test code and debug')]
-                [-s (Generates cscope and ctags database for searches)]\n"
+                [-s (Generates cscope and ctags database for searches)]
+                [-i (Installs various tools required for building and development of the project. Use Only if needed)]\n"
       exit 1 # Command to come out of the program with status 1
       ;; 
 esac

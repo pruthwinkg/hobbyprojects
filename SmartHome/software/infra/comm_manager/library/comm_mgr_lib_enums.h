@@ -48,7 +48,8 @@ BEGIN_ENUM(COMM_MGR_LIB_IPC_AF) {
 
 // These DSIDs are internal to the comm_mgr_lib
 BEGIN_ENUM(COMM_MGR_LIB_DSID) {
-    ADD_ENUM_STR(COMM_MGR_LIB_DSID_PROTO, "DSID for sending protocols/ack")
+    ADD_ENUM_STR(COMM_MGR_LIB_DSID_PROTO_RECV, "DSID for receiving protocols/ack")
+    ADD_ENUM_STR(COMM_MGR_LIB_DSID_PROTO_SEND, "DSID for sending protocols/ack")
     ADD_ENUM_STR(COMM_MGR_LIB_DSID_DATA_RECV, "DSID for receiving the Data/ack")
     ADD_ENUM_STR(COMM_MGR_LIB_DSID_DATA_SEND, "DSID for sending the Data/ack")
     ADD_ENUM(COMM_MGR_LIB_DSID_MAX)

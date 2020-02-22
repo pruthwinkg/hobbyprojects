@@ -176,9 +176,16 @@ COMM_MGR_LIB_CLIENT_ID comm_mgr_lib_create_client(COMM_MGR_LIB_CLIENT *client) {
     queue.type = UTILS_QUEUE_CIRCULAR;
     queue.size = COMM_MGR_LIB_PROTO_QUEUE_SIZE;
     queue.isPriority = FALSE;
-    __comm_mgr_lib_clients[id].client_ptr->__DSID[COMM_MGR_LIB_DSID_PROTO] = utils_ds_queue_create(&queue);
-    if (__comm_mgr_lib_clients[id].client_ptr->__DSID[COMM_MGR_LIB_DSID_PROTO] == 0) {
-        COMM_MGR_LIB_ERROR("Failed to create COMM_MGR_LIB_DSID_PROTO");
+    __comm_mgr_lib_clients[id].client_ptr->__DSID[COMM_MGR_LIB_DSID_PROTO_RECV] = utils_ds_queue_create(&queue);
+    if (__comm_mgr_lib_clients[id].client_ptr->__DSID[COMM_MGR_LIB_DSID_PROTO_RECV] == 0) {
+        COMM_MGR_LIB_ERROR("Failed to create COMM_MGR_LIB_DSID_PROTO_RECV");
+        goto cleanup;
+    }
+
+    queue.size = COMM_MGR_LIB_PROTO_QUEUE_SIZE;
+    __comm_mgr_lib_clients[id].client_ptr->__DSID[COMM_MGR_LIB_DSID_PROTO_SEND] = utils_ds_queue_create(&queue);
+    if (__comm_mgr_lib_clients[id].client_ptr->__DSID[COMM_MGR_LIB_DSID_PROTO_SEND] == 0) {
+        COMM_MGR_LIB_ERROR("Failed to create COMM_MGR_LIB_DSID_PROTO_SEND");
         goto cleanup;
     }
 
@@ -233,7 +240,8 @@ COMM_MGR_LIB_ERR comm_mgr_lib_delete_client(COMM_MGR_LIB_CLIENT_ID id) {
           Communication Manager.
 
           It relies on the below DSIDs for receving/sending protocol/data/ack
-          COMM_MGR_LIB_DSID_PROTO - DSID for sending protocols/ack      
+          COMM_MGR_LIB_DSID_PROTO_RECV - DSID for receiving protocols/ack      
+          COMM_MGR_LIB_DSID_PROTO_SEND - DSID for sending protocols/ack      
           COMM_MGR_LIB_DSID_DATA_RECV - DSID for receiving the Data/ack
           COMM_MGR_LIB_DSID_DATA_SEND - DSID for sending the Data/ack
 
@@ -256,7 +264,7 @@ COMM_MGR_LIB_ERR comm_mgr_lib_server_communicator(COMM_MGR_LIB_CLIENT_ID id) {
 	boolean end_lib = FALSE;
 	boolean is_send_ready = FALSE;
 	char recv_buffer[8096];
-	int recv_count = 0;
+	int recv_count = 0, send_count = 0;
     COMM_MGR_MSG *msg;
     uint32_t comm_msg_size = 0;
 
@@ -348,8 +356,8 @@ COMM_MGR_LIB_ERR comm_mgr_lib_server_communicator(COMM_MGR_LIB_CLIENT_ID id) {
 		if (FD_ISSET(__comm_mgr_lib_clients[cid].client_ptr->__fd , &working_write_fd)) {			
 			do {
                 // Check the send DSID if something is available to be sent
-                msg = (COMM_MGR_LIB_MSG *)utils_ds_queue_dequeue( \
-                            __comm_mgr_lib_clients[cid].client_ptr->__DSID[COMM_MGR_LIB_DSID_SEND]);		
+                msg = (COMM_MGR_MSG *)utils_ds_queue_dequeue( \
+                            __comm_mgr_lib_clients[cid].client_ptr->__DSID[COMM_MGR_LIB_DSID_DATA_SEND]);		
                 if(msg == NULL) { // If DSID is empty, abort sending till there is some activity on this DSID
                     FD_ZERO(&working_write_fd);
                     break;
@@ -605,9 +613,9 @@ static COMM_MGR_LIB_ERR __comm_mgr_lib_send_msg(COMM_MGR_LIB_CLIENT *client, COM
         ((comm_mgr_msg->hdr.msg_type == COMM_MGR_MSG_ACK) && 
         ((comm_mgr_msg->hdr.submsg_type == COMM_MGR_SUBMSG_PROTO_ACK) || 
         (comm_mgr_msg->hdr.submsg_type == COMM_MGR_SUBMSG_PROTO_NACK)))) {
-        if(utils_ds_queue_enqueue(client->client_ptr->__DSID[COMM_MGR_LIB_DSID_PROTO], (void *)comm_mgr_msg) < 0) {
+        if(utils_ds_queue_enqueue(client->client_ptr->__DSID[COMM_MGR_LIB_DSID_PROTO_SEND], (void *)comm_mgr_msg) < 0) {
             COMM_MGR_LIB_ERROR("Failed to insert the Protocol packet to DSID 0x%0x", 
-                                                client->client_ptr->__DSID[COMM_MGR_LIB_DSID_PROTO]);
+                                                client->client_ptr->__DSID[COMM_MGR_LIB_DSID_PROTO_SEND]);
             return COMM_MGR_LIB_UTILS_DSID_ERR; 
         }
     } else { // For now, enqueue rest of the packets to DATA DSID
