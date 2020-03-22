@@ -6,7 +6,8 @@ set(LIBRARY_LIST "logging"
                  "comm_mgr")
 
 # Set the source files required
-set(SOURCE_FILE_LIST "comm_mgr_lib_test_app.c")
+set(SOURCE_FILE_LIST "comm_mgr_lib_test_app.c"
+                     "comm_mgr_lib_test_app_workers.c")
 
 # Generate the executable
 add_executable (${EXECUTABLE_NAME} ${SOURCE_FILE_LIST})

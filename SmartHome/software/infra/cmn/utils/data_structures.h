@@ -93,6 +93,8 @@ UTILS_DS_ID utils_ds_queue_create(UTILS_QUEUE *queue);
 int utils_ds_queue_enqueue(UTILS_DS_ID id, void *data);
 void* utils_ds_queue_dequeue(UTILS_DS_ID id);
 int utils_ds_queue_destroy(UTILS_DS_ID id, boolean delete_data); // Deletes FULL queue
+boolean utils_ds_queue_is_full(UTILS_DS_ID id);
+boolean utils_ds_queue_is_empty(UTILS_DS_ID id);
 
 // Linked List functions
 

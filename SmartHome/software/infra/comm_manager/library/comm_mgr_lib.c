@@ -30,9 +30,11 @@ static uint16_t *comm_mgr_lib_dynamic_uid_map = NULL;
 
 static uint16_t comm_mgr_lib_src_uid = 0;
 
+static boolean comm_mgr_lib_epoll_en = FALSE;
+
 boolean comm_mgr_lib_initialized = FALSE;
 
-COMM_MGR_LIB_ERR comm_mgr_lib_init(LOG_LEVEL level, uint16_t src_uid) {
+COMM_MGR_LIB_ERR comm_mgr_lib_init(LOG_LEVEL level, uint16_t src_uid, boolean epoll_en) {
     log_lib_init(NULL, level);
     utils_ds_init(); // Initialize utils data structure library
 
@@ -40,8 +42,9 @@ COMM_MGR_LIB_ERR comm_mgr_lib_init(LOG_LEVEL level, uint16_t src_uid) {
         __comm_mgr_lib_clients[i].client_ptr = NULL; // This indicates Invalid client
     }
     comm_mgr_lib_src_uid = src_uid;
-
     comm_mgr_lib_initialized = TRUE;
+    comm_mgr_lib_epoll_en = epoll_en;
+
     return COMM_MGR_LIB_SUCCESS; 
 }
 
@@ -54,6 +57,8 @@ COMM_MGR_LIB_ERR comm_mgr_lib_destroy() {
     }
 
     comm_mgr_lib_initialized = FALSE;
+    comm_mgr_lib_epoll_en = FALSE;
+
     return COMM_MGR_LIB_SUCCESS; 
 }
 
@@ -164,6 +169,27 @@ COMM_MGR_LIB_CLIENT_ID comm_mgr_lib_create_client(COMM_MGR_LIB_CLIENT *client) {
     __comm_mgr_lib_clients[id].client_ptr->__clientReady = 1;
     __comm_mgr_lib_clients[id].client_ptr->__proto_state = COMM_MGR_PROTO_DISCOVERY_START;
     __comm_mgr_lib_clients[id].__clientID = (id | (client->clientAf << 4));
+    __comm_mgr_lib_clients[id].property = (COMM_MGR_LIB_CLIENT_PROPERTY*)malloc(sizeof(COMM_MGR_LIB_CLIENT_PROPERTY));
+
+    // Copy the user supplied client properties, if present. Else set default
+    if(client->property != NULL) {
+        memcpy(__comm_mgr_lib_clients[id].property, client->property, sizeof(COMM_MGR_LIB_CLIENT_PROPERTY)); 
+    } else {
+        __comm_mgr_lib_clients[id].property->comm_mgr_lib_recv_queue_size = COMM_MGR_LIB_RECV_QUEUE_SIZE;
+        __comm_mgr_lib_clients[id].property->comm_mgr_lib_send_queue_size = COMM_MGR_LIB_SEND_QUEUE_SIZE;
+        if(comm_mgr_lib_epoll_en) {
+            __comm_mgr_lib_clients[id].property->libInactivityTimeOut = COMM_MGR_LIB_DEFAULT_EPOLL_TIMEOUT;
+        } else {
+            __comm_mgr_lib_clients[id].property->libInactivityTimeOut = COMM_MGR_LIB_DEFAULT_SELECT_TIMEOUT;
+        }
+    }
+    
+    // Enabling epoll based comm_mgr_lib
+    if(comm_mgr_lib_epoll_en) {
+        COMM_MGR_LIB_DEBUG("Enabling the epoll based system for cid %d", __comm_mgr_lib_clients[id].__clientID);
+        //int pollingfd = epoll_create( 0xCAFE ); 
+        // Refer : https://www.ulduzsoft.com/2014/01/select-poll-epoll-practical-difference-for-system-architects/
+    }
 
     // Create default DSIDs which is needed by the lib per client
     __comm_mgr_lib_clients[id].client_ptr->__DSID = 
@@ -189,24 +215,14 @@ COMM_MGR_LIB_CLIENT_ID comm_mgr_lib_create_client(COMM_MGR_LIB_CLIENT *client) {
         goto cleanup;
     }
 
-
-
-    if(__comm_mgr_lib_clients[id].property == NULL) {
-        queue.size = COMM_MGR_LIB_RECV_QUEUE_SIZE;
-    } else {
-        queue.size = __comm_mgr_lib_clients[id].property->comm_mgr_lib_recv_queue_size;
-    }
+    queue.size = __comm_mgr_lib_clients[id].property->comm_mgr_lib_recv_queue_size;
     __comm_mgr_lib_clients[id].client_ptr->__DSID[COMM_MGR_LIB_DSID_DATA_RECV] = utils_ds_queue_create(&queue);
     if (__comm_mgr_lib_clients[id].client_ptr->__DSID[COMM_MGR_LIB_DSID_DATA_RECV] == 0) {
         COMM_MGR_LIB_ERROR("Failed to create COMM_MGR_LIB_DSID_DATA_RECV");
         goto cleanup;
     }
 
-    if(__comm_mgr_lib_clients[id].property == NULL) {
-        queue.size = COMM_MGR_LIB_SEND_QUEUE_SIZE;
-    } else {
-        queue.size = __comm_mgr_lib_clients[id].property->comm_mgr_lib_send_queue_size;
-    }
+    queue.size = __comm_mgr_lib_clients[id].property->comm_mgr_lib_send_queue_size;
     __comm_mgr_lib_clients[id].client_ptr->__DSID[COMM_MGR_LIB_DSID_DATA_SEND] = utils_ds_queue_create(&queue);
     if (__comm_mgr_lib_clients[id].client_ptr->__DSID[COMM_MGR_LIB_DSID_DATA_SEND] == 0) {
         COMM_MGR_LIB_ERROR("Failed to create COMM_MGR_LIB_DSID_DATA_SEND");
@@ -237,7 +253,8 @@ COMM_MGR_LIB_ERR comm_mgr_lib_delete_client(COMM_MGR_LIB_CLIENT_ID id) {
 /*
     @brief This function is the gateway to the Communication Manager.
           It handles the requests coming from and to be sent to
-          Communication Manager.
+          Communication Manager. This function should never return under
+          normal conditions.
 
           It relies on the below DSIDs for receving/sending protocol/data/ack
           COMM_MGR_LIB_DSID_PROTO_RECV - DSID for receiving protocols/ack      
@@ -254,146 +271,20 @@ COMM_MGR_LIB_ERR comm_mgr_lib_delete_client(COMM_MGR_LIB_CLIENT_ID id) {
           Note : With this logic, always one msg is sent and any receive activity is checked.
           And again a next msg is sent if its available in DSIDs. With this, the receiver is
           also priortized
+
+    Note : Based on "comm_mgr_lib_epoll_en" it uses epoll() / select() based event handling
+        This is enabled/disabled per APP only
 */
 COMM_MGR_LIB_ERR comm_mgr_lib_server_communicator(COMM_MGR_LIB_CLIENT_ID id) {
-	uint8_t cid = COMM_MGR_LIB_GET_CLIENT_ID(id);
-    fd_set  working_read_fd;
-    fd_set  working_write_fd;
-	struct timeval	timeout;
-	int max_sd, rc = 0;
-	boolean end_lib = FALSE;
-	boolean is_send_ready = FALSE;
-	char recv_buffer[8096];
-	int recv_count = 0, send_count = 0;
-    COMM_MGR_MSG *msg;
-    uint32_t comm_msg_size = 0;
-
-    if(cid > COMM_MGR_LIB_MAX_CLIENTS) {
-        COMM_MGR_LIB_ERROR("Invalid client");
-        return COMM_MGR_LIB_INVALID_CLIENT_ERR;
+    if(comm_mgr_lib_epoll_en) {        
+        COMM_MGR_LIB_DEBUG("Using the epoll based event handling mechansim");
+        return __comm_mgr_lib_server_communicator_with_epoll(id);
+    } else {
+        COMM_MGR_LIB_DEBUG("Using the select based event handling mechansim");
+        return __comm_mgr_lib_server_communicator_with_select(id);
     }
-
-   	max_sd = __comm_mgr_lib_clients[cid].client_ptr->__fd;
-
-   	/*************************************************************/
-   	/* Initialize the timeval struct to libInactivityTimeOut 	 */
-	/* minutes.  If no activity after libInactivityTimeOut 	 	 */
-	/* minutes this program will end.           			     */
-   	/*************************************************************/
-	if (__comm_mgr_lib_clients[cid].property) {
-	   	timeout.tv_sec  = __comm_mgr_lib_clients[cid].property->libInactivityTimeOut * 60;
-   		timeout.tv_usec = 0;
-	}
-
-	// Note : Only one FD per client, where the activity has to be monitored
-	/*************************************************************/
-   	/*Loop waiting for for incoming data on the connected socket */
-   	/*************************************************************/
-	do {
-	    FD_ZERO(&working_read_fd);
-    	FD_ZERO(&working_write_fd);
-
-    	/**********************************************************/
-      	/* Copy the master fd_set over to the working fd_set.     */
-      	/**********************************************************/
-		FD_SET(__comm_mgr_lib_clients[cid].client_ptr->__fd, &working_read_fd);	
-	
-		// Set the write FD only when, there is something to send from SEND_DSID
-		if(is_send_ready == TRUE) {
-			FD_SET(__comm_mgr_lib_clients[cid].client_ptr->__fd, &working_write_fd);	
-		}
-
-		/**********************************************************/
-      	/* Call select() and wait libInactivityTimeOut   	      */
-      	/**********************************************************/
-      	COMM_MGR_LIB_DEBUG("Waiting on select()...");
-		if (__comm_mgr_lib_clients[cid].property == NULL) { // Forever
-	      	rc = select(max_sd + 1, &working_read_fd, &working_write_fd, NULL, NULL);
-		} else {
-			if(__comm_mgr_lib_clients[cid].property->libInactivityTimeOut < 1) { // Forever
-				rc = select(max_sd + 1, &working_read_fd, &working_write_fd, NULL, NULL);
-			} else {
-				rc = select(max_sd + 1, &working_read_fd, &working_write_fd, NULL, &timeout);
-			}
-		}
-      	
-		/**********************************************************/
-      	/* Check to see if the select call failed.                */
-      	/**********************************************************/
-      	if (rc < 0) {
-        	COMM_MGR_LIB_ERROR("select() failed");
-			rc = COMM_MGR_LIB_SELECT_ERR;
-         	goto cleanup_and_exit;
-      	}
-      	/**********************************************************/
-      	/* Check to see if the libInactivityTimeOut minute time   */
-		/* out expired.         								  */
-      	/**********************************************************/
-      	if (rc == 0) {
-        	COMM_MGR_LIB_ERROR("select() timed out.  End program.");
-			rc = COMM_MGR_LIB_CLIENT_TIMEOUT;
-         	goto cleanup_and_exit;
-      	}
-
-		// Now check if the client FD is set
-		if (FD_ISSET(__comm_mgr_lib_clients[cid].client_ptr->__fd, &working_read_fd)) {
-			do {
-				recv_count = recv(__comm_mgr_lib_clients[cid].client_ptr->__fd, 
-												recv_buffer, sizeof(recv_buffer), MSG_DONTWAIT);
-				if (recv_count < 0) {
-					if (errno != EWOULDBLOCK) {
-						COMM_MGR_LIB_ERROR("recv() failed");
-						goto cleanup_and_exit;
-					}
-					break;
-				}
-				// Enqueue the received data to proto/data DSID. 
-				__comm_mgr_lib_receive_packets(id, recv_buffer, recv_count);
-			} while(recv_count > 0);	
-		}
-
-		// Check if the FD is writable
-		if (FD_ISSET(__comm_mgr_lib_clients[cid].client_ptr->__fd , &working_write_fd)) {			
-			do {
-                // Check the send DSID if something is available to be sent
-                msg = (COMM_MGR_MSG *)utils_ds_queue_dequeue( \
-                            __comm_mgr_lib_clients[cid].client_ptr->__DSID[COMM_MGR_LIB_DSID_DATA_SEND]);		
-                if(msg == NULL) { // If DSID is empty, abort sending till there is some activity on this DSID
-                    FD_ZERO(&working_write_fd);
-                    break;
-                }
-                comm_msg_size = COMM_MGR_MSG_SIZE(msg);
-                send_count = send(__comm_mgr_lib_clients[cid].client_ptr->__fd, msg, comm_msg_size, 0);
-                if (send_count < 0) {
-                    if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                        COMM_MGR_LIB_TRACE("Communication Manager is not ready right now, try again later");
-                        break; // Its okay. But should we enqueue the msg back to queue to try again later
-                    } else {
-                        COMM_MGR_LIB_ERROR("Error in sending");
-                        break; // This is very bad case. Handle it
-                    }
-                } else if(send_count == 0) {
-                    COMM_MGR_LIB_TRACE("Communication Manager cannot accept data right now, try again later");
-                    break; // Its okay. But should we enqueue the msg back to queue to try again later
-                }
-
-                if(send_count == comm_msg_size) {
-                    COMM_MGR_LIB_DEBUG("Sent the message to Communication Manager successfully");                    
-                }
-			} while(send_count > 0);
-		}
-		
-	} while(end_lib == FALSE);
-
-cleanup_and_exit:
-   	/*************************************************************/
-   	/* Clean up the socket which is open                         */
-   	/*************************************************************/
-	close(__comm_mgr_lib_clients[cid].client_ptr->__fd);
-	
-	return rc;
+    return COMM_MGR_LIB_SUCCESS;
 }
-
 
 /*
     @brief This function is explicitly used to send user data ONLY.
@@ -499,7 +390,7 @@ int comm_mgr_lib_recv_data(COMM_MGR_LIB_CLIENT_ID id, char *msg, int len) {
                             Internal Functions
 ******************************************************************************/
 static uint16_t __comm_mgr_lib_get_free_client() {
-    for (uint16_t i = 0; i < COMM_MGR_LIB_MAX_CLIENTS; i++) {
+    for (uint16_t i = 1; i < COMM_MGR_LIB_MAX_CLIENTS; i++) {
         if (__comm_mgr_lib_clients[i].client_ptr == NULL) {            
             return i;
         }
@@ -618,12 +509,28 @@ static COMM_MGR_LIB_ERR __comm_mgr_lib_send_msg(COMM_MGR_LIB_CLIENT *client, COM
                                                 client->client_ptr->__DSID[COMM_MGR_LIB_DSID_PROTO_SEND]);
             return COMM_MGR_LIB_UTILS_DSID_ERR; 
         }
+        #if 0
+ 		// Set the write FD only when, there is something to send from SEND_DSID
+        if(!utils_ds_queue_is_empty(client->client_ptr->__DSID[COMM_MGR_LIB_DSID_PROTO_SEND])) {
+            COMM_MGR_LIB_DEBUG("Data is available on DSID : COMM_MGR_LIB_DSID_PROTO_SEND");
+			FD_SET(client->client_ptr->__fd, 
+                        &(client->client_ptr->__working_write_fd));	
+		}
+       #endif
     } else { // For now, enqueue rest of the packets to DATA DSID
         if(utils_ds_queue_enqueue(client->client_ptr->__DSID[COMM_MGR_LIB_DSID_DATA_SEND], (void *)comm_mgr_msg) < 0) {
             COMM_MGR_LIB_ERROR("Failed to insert the Protocol packet to DSID 0x%0x",
                                             client->client_ptr->__DSID[COMM_MGR_LIB_DSID_DATA_SEND]);
             return COMM_MGR_LIB_UTILS_DSID_ERR; 
         }
+        #if 0
+  		// Set the write FD only when, there is something to send from SEND_DSID
+        if(!utils_ds_queue_is_empty(client->client_ptr->__DSID[COMM_MGR_LIB_DSID_DATA_SEND])) {
+            COMM_MGR_LIB_DEBUG("Data is available on DSID : COMM_MGR_LIB_DSID_DATA_SEND");
+			FD_SET(client->client_ptr->__fd, 
+                        &(client->client_ptr->__working_write_fd));	
+		}    
+        #endif
     }
  
     return COMM_MGR_LIB_SUCCESS;
@@ -1028,6 +935,163 @@ COMM_MGR_LIB_ERR __comm_mgr_lib_update_local_uid_map(COMM_MGR_MSG *msg) {
     memset(comm_mgr_lib_dynamic_uid_map, 0, dynamic_uid_map_size);
 
     return COMM_MGR_LIB_SUCCESS;
+}
+
+/*
+    This function uses epoll based event handling mechanism.
+
+    Refer "https://www.ulduzsoft.com/2014/01/select-poll-epoll-practical-difference-for-system-architects/"
+    for pros/cons of using this function
+*/
+static COMM_MGR_LIB_ERR __comm_mgr_lib_server_communicator_with_epoll(COMM_MGR_LIB_CLIENT_ID id) {
+
+    return COMM_MGR_LIB_SUCCESS;
+}
+
+
+/*
+    This function uses select based event handling mechanism.
+
+    'libInactivityTimeOut' in the client property will be set to a default value of '5 sec'.
+    This can be be overrided per client in an APP. 
+    If it is set to < 0 by the client, then it will forever keep looking for events. This is can be
+    helpful only if interested in read event and dont want to timeout (Rare case).
+
+    Recommended to leave at default, unless the app/client knows what it is doing exactly
+
+    Refer "https://www.ulduzsoft.com/2014/01/select-poll-epoll-practical-difference-for-system-architects/"
+    for pros/cons of using this function
+*/
+static COMM_MGR_LIB_ERR __comm_mgr_lib_server_communicator_with_select(COMM_MGR_LIB_CLIENT_ID id) {
+	uint8_t cid = COMM_MGR_LIB_GET_CLIENT_ID(id);
+    fd_set  *working_read_fd;
+    fd_set  *working_write_fd;
+	struct timeval	timeout;
+	int max_sd, rc = 0;
+	boolean end_lib = FALSE;
+	char recv_buffer[8096];
+	int recv_count = 0, send_count = 0;
+    COMM_MGR_MSG *msg;
+    uint32_t comm_msg_size = 0;
+    uint32_t default_select_timeout = COMM_MGR_LIB_DEFAULT_SELECT_TIMEOUT;
+
+    if(cid > COMM_MGR_LIB_MAX_CLIENTS) {
+        COMM_MGR_LIB_ERROR("Invalid client");
+        return COMM_MGR_LIB_INVALID_CLIENT_ERR;
+    }
+
+   	max_sd = __comm_mgr_lib_clients[cid].client_ptr->__fd;
+
+    working_read_fd = &(__comm_mgr_lib_clients[cid].client_ptr->__working_read_fd);
+    working_write_fd = &(__comm_mgr_lib_clients[cid].client_ptr->__working_write_fd); 
+
+
+	// Note : Only one FD per client, where the activity has to be monitored
+	/*************************************************************/
+   	/*Loop waiting for for incoming data on the connected socket */
+   	/*************************************************************/
+	do {
+        /*************************************************************/
+        /* Initialize the timeval struct to libInactivityTimeOut 	 */
+        /* minutes.  If no activity after libInactivityTimeOut 	 	 */
+        /* minutes this program will end.           			     */
+        /*************************************************************/
+        timeout.tv_sec  = __comm_mgr_lib_clients[cid].property->libInactivityTimeOut;
+        timeout.tv_usec = 0;
+
+	    FD_ZERO(working_read_fd);
+    	FD_ZERO(working_write_fd);
+
+    	/**********************************************************/
+      	/* Copy the master fd_set over to the working fd_set.     */
+      	/**********************************************************/
+		FD_SET(__comm_mgr_lib_clients[cid].client_ptr->__fd, working_read_fd);	
+	    
+ 		// Set the write FD only when, there is something to send from SEND_DSID
+        if((!utils_ds_queue_is_empty(__comm_mgr_lib_clients[cid].client_ptr->__DSID[COMM_MGR_LIB_DSID_PROTO_SEND])) ||
+            (!utils_ds_queue_is_empty(__comm_mgr_lib_clients[cid].client_ptr->__DSID[COMM_MGR_LIB_DSID_DATA_SEND]))){
+            COMM_MGR_LIB_DEBUG("Data is available on DSID");
+			FD_SET(__comm_mgr_lib_clients[cid].client_ptr->__fd, working_write_fd);	
+		}
+
+		/**********************************************************/
+      	/* Call select() and wait libInactivityTimeOut   	      */
+      	/**********************************************************/
+        if((__comm_mgr_lib_clients[cid].property) && 
+        (__comm_mgr_lib_clients[cid].property->libInactivityTimeOut < 1)) { // Forever
+            rc = select(max_sd + 1, working_read_fd, working_write_fd, NULL, NULL);
+        } else {
+            rc = select(max_sd + 1, working_read_fd, working_write_fd, NULL, &timeout);
+        }
+             	
+		/**********************************************************/
+      	/* Check to see if the select call failed.                */
+      	/**********************************************************/
+      	if (rc < 0) {
+        	COMM_MGR_LIB_ERROR("select() failed");
+			rc = COMM_MGR_LIB_SELECT_ERR;
+         	goto cleanup_and_exit;
+      	}
+
+        // Control comes here when timeouts OR when a activity is found on the fds
+
+		// Now check if the client FD is set
+		if (FD_ISSET(__comm_mgr_lib_clients[cid].client_ptr->__fd, working_read_fd)) {
+			do {
+				recv_count = recv(__comm_mgr_lib_clients[cid].client_ptr->__fd, 
+												recv_buffer, sizeof(recv_buffer), MSG_DONTWAIT);
+				if (recv_count < 0) {
+					if (errno != EWOULDBLOCK) {
+						COMM_MGR_LIB_ERROR("recv() failed");
+						goto cleanup_and_exit;
+					}
+					break;
+				}
+				// Enqueue the received data to proto/data DSID. 
+				__comm_mgr_lib_receive_packets(id, recv_buffer, recv_count);
+			} while(recv_count > 0);	
+		}
+
+		// Check if the FD is writable
+		if (FD_ISSET(__comm_mgr_lib_clients[cid].client_ptr->__fd , working_write_fd)) {			
+			do {
+                // Check the send DSID if something is available to be sent
+                msg = (COMM_MGR_MSG *)utils_ds_queue_dequeue( \
+                            __comm_mgr_lib_clients[cid].client_ptr->__DSID[COMM_MGR_LIB_DSID_DATA_SEND]);		
+                if(msg == NULL) { // If DSID is empty, abort sending till there is some activity on this DSID
+                    FD_ZERO(working_write_fd);
+                    break;
+                }
+                comm_msg_size = COMM_MGR_MSG_SIZE(msg);
+                send_count = send(__comm_mgr_lib_clients[cid].client_ptr->__fd, msg, comm_msg_size, 0);
+                if (send_count < 0) {
+                    if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                        COMM_MGR_LIB_TRACE("Communication Manager is not ready right now, try again later");
+                        break; // Its okay. But should we enqueue the msg back to queue to try again later
+                    } else {
+                        COMM_MGR_LIB_ERROR("Error in sending");
+                        break; // This is very bad case. Handle it
+                    }
+                } else if(send_count == 0) {
+                    COMM_MGR_LIB_TRACE("Communication Manager cannot accept data right now, try again later");
+                    break; // Its okay. But should we enqueue the msg back to queue to try again later
+                }
+
+                if(send_count == comm_msg_size) {
+                    COMM_MGR_LIB_DEBUG("Sent the message to Communication Manager successfully");                    
+                }
+			} while(send_count > 0);
+		}
+		
+	} while(end_lib == FALSE);
+
+cleanup_and_exit:
+   	/*************************************************************/
+   	/* Clean up the socket which is open                         */
+   	/*************************************************************/
+	close(__comm_mgr_lib_clients[cid].client_ptr->__fd);
+	
+	return rc;
 }
 
 

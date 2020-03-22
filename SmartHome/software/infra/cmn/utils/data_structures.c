@@ -169,6 +169,15 @@ del_id:
    return temp;
 }
 
+boolean utils_ds_queue_is_full(UTILS_DS_ID id) {
+    return __utils_ds_queue_isfull(id);
+}
+
+boolean utils_ds_queue_is_empty(UTILS_DS_ID id) {
+    return __utils_ds_queue_isempty(id);
+}
+
+
 /*****************************************************************************
                     Internal Functions
 *****************************************************************************/
