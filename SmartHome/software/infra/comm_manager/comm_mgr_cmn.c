@@ -44,6 +44,40 @@ COMM_MGR_MSG* comm_mgr_create_msg(uint16_t src_uid, uint16_t dst_uid,
     return msg;
 }
 
+/*
+    This function just creates COMM_MGR_MSG with only header part of
+    it filled.
+
+    This function doesnt allocate any memory. Hence it is very useful
+    in cases like sending a comm msg in format of byte stream to avoid
+    lot of malloc leading to fragmentation
+*/
+COMM_MGR_MSG comm_mgr_create_msg_hdr(uint16_t src_uid, uint16_t dst_uid, 
+                                    COMM_MGR_MSG_TYPE msg_type,
+                                    uint16_t payloadSize) {
+    COMM_MGR_MSG msg;
+    memset(&msg, 0, sizeof(msg));
+
+    if (msg_type >= COMM_MGR_MSG_MAX) {
+        return msg;
+    }
+    
+    msg.hdr.magic = COMM_MGR_MSG_HDR_MAGIC;
+    msg.hdr.major_ver = COMM_MGR_MSG_HDR_MAJOR_VER;
+    msg.hdr.minor_ver = COMM_MGR_MSG_HDR_MINOR_VER;
+    msg.hdr.msg_type = msg_type;
+    msg.hdr.src_uid = src_uid;
+    msg.hdr.dst_uid = dst_uid;
+    msg.hdr.priority = COMM_MGR_MSG_PRIORITY_NORMAL; // This can be overwritten on need basis
+    msg.hdr.ack_required = FALSE;
+    msg.hdr.msg_backing_time = 0;    
+    msg.hdr.payloadSize = payloadSize;
+    msg.payload = NULL;
+
+    return msg;
+}
+
+
 void comm_mgr_destroy_msg(COMM_MGR_MSG *msg) {
     if (msg == NULL) {
         return;
@@ -58,7 +92,10 @@ void comm_mgr_destroy_msg(COMM_MGR_MSG *msg) {
 
 /*
     This function is used to get the COMM_MSG from the byte stream receive from
-    the clients/Master instances. 
+    the clients/Master instances.
+
+    This function mallocs the memory for the COMM_MGR_MSG. Take care to free it
+    when required
 
 */
 COMM_MGR_MSG* comm_mgr_get_msg(char *msg, uint16_t len) {
@@ -66,7 +103,12 @@ COMM_MGR_MSG* comm_mgr_get_msg(char *msg, uint16_t len) {
         return NULL;
     }
 
-    COMM_MGR_MSG *comm_mgr_msg = (COMM_MGR_MSG *)msg;
+    COMM_MGR_MSG *comm_mgr_msg = (COMM_MGR_MSG*)malloc(sizeof(COMM_MGR_MSG));
+    if (comm_mgr_msg == NULL) {
+        return NULL;
+    }
+
+    memcpy((char *)comm_mgr_msg, msg, sizeof(COMM_MGR_MSG_HDR)); // Copy the header part
 
     // Verify the data received. No need to verify the version
     // numbers since they can be different in case of inter-system
@@ -84,7 +126,50 @@ COMM_MGR_MSG* comm_mgr_get_msg(char *msg, uint16_t len) {
         return NULL;
     }
 
+    // Copy the payload. Payload is sent in byte stream format.
+    // Payloads can be NULL in case of protocol packets
+    if (comm_mgr_msg->hdr.payloadSize > 0) {
+        comm_mgr_msg->payload = (char *)malloc(comm_mgr_msg->hdr.payloadSize);
+        memcpy(comm_mgr_msg->payload, msg + sizeof(COMM_MGR_MSG_HDR), comm_mgr_msg->hdr.payloadSize);
+    } else {
+        comm_mgr_msg->payload = NULL;
+    }
+
     return comm_mgr_msg;
+}
+
+/*
+    This function extracts the next COMM_MGR_MSG from msg
+    if available, else return NULL.
+    
+    Typically, this function should be called in a loop,
+    till it returns NULL
+
+    This function doesnt do any memory allocation
+*/
+COMM_MGR_MSG* comm_mgr_get_next_msg(char *msg) {
+    if (msg == NULL) {
+        return NULL;
+    }
+
+    COMM_MGR_MSG *comm_mgr_msg = (COMM_MGR_MSG*)msg;
+
+    // Validate the first msg header
+    if ((comm_mgr_msg->hdr.magic != COMM_MGR_MSG_HDR_MAGIC) ||
+        (comm_mgr_msg->hdr.msg_type >= COMM_MGR_MSG_MAX)) {
+        return NULL;
+    }
+
+    // Point to the next comm msg
+    comm_mgr_msg = (COMM_MGR_MSG *)(msg + (sizeof(COMM_MGR_MSG_HDR) + comm_mgr_msg->hdr.payloadSize));
+
+    // Validate the pointer
+    if ((comm_mgr_msg->hdr.magic != COMM_MGR_MSG_HDR_MAGIC) ||
+        (comm_mgr_msg->hdr.msg_type >= COMM_MGR_MSG_MAX)) {
+        return NULL;
+    }
+
+    return comm_mgr_msg;    
 }
 
 /*

@@ -56,6 +56,9 @@ UTILS_SHM_OBJ *sysmgr_shm_obj;
 uint16_t comm_mgr_reg_apps_num = 0; // Total number of valid registered apps
 COMM_MGR_SRV_REG_APPS *comm_mgr_reg_apps_list;
 
+char datastream[COMM_MGR_PACKET_MAX_SIZE]; // Used while sending data. Statically allocted to avoid frequent
+                                           // mallocs which can result in lot of fragmentation
+
 COMM_MGR_SRV_ERR comm_mgr_srv_init() {
 	if (comm_mgr_srv_initialized == TRUE) {
 		COMM_MGR_SRV_ERROR("comm_mgr_srv already initialized");
@@ -518,9 +521,13 @@ COMM_MGR_SRV_ERR comm_mgr_srv_send_data(COMM_MGR_SRV_MASTER *master,
     }
 
     uint32_t len = 0;
-    len = sizeof(COMM_MGR_MSG_HDR) + (srv_msg->msg->hdr.payloadSize * sizeof(char));
-    
-    rc = send(srv_msg->server_fd, (char *)srv_msg->msg, len, 0);
+    len = sizeof(COMM_MGR_MSG_HDR) + (srv_msg->msg->hdr.payloadSize);
+    memset(datastream, 0, sizeof(datastream));
+    memcpy(datastream, srv_msg->msg, sizeof(COMM_MGR_MSG_HDR));
+    memcpy(datastream + sizeof(COMM_MGR_MSG_HDR), srv_msg->msg->payload, (srv_msg->msg->hdr.payloadSize));
+
+    rc = send(srv_msg->server_fd, datastream, len, 0);
+
     if (rc < 0) {
         COMM_MGR_SRV_ERROR("  send() failed");
         return COMM_MGR_SRV_SEND_ERR;

@@ -25,8 +25,12 @@ static uint16_t comm_mgr_lib_static_uid_base = 0;
 static uint16_t comm_mgr_lib_static_uid_max = 0;
 static uint16_t comm_mgr_lib_dynamic_uid_base = 0;
 static uint16_t comm_mgr_lib_dynamic_uid_max = 0;
-static uint16_t *comm_mgr_lib_static_uid_map = NULL;
-static uint16_t *comm_mgr_lib_dynamic_uid_map = NULL;
+
+// Below two maps are used by the library to determine what is current
+// learning status of various apps in the system. This acts like a
+// local cache for the protocol results (via learning results)
+static uint16_t *comm_mgr_lib_static_uid_learning_cache = NULL;
+static uint16_t *comm_mgr_lib_dynamic_uid_learning_cache = NULL;
 
 static uint16_t comm_mgr_lib_src_uid = 0;
 
@@ -438,6 +442,9 @@ static COMM_MGR_LIB_ERR  __comm_mgr_lib_receive_packets(COMM_MGR_LIB_CLIENT_ID i
         return COMM_MGR_LIB_BAD_PACKET;
     }
 
+    COMM_MGR_LIB_DEBUG("Received msg_type [%d], submsg_type [%d]", 
+                    comm_mgr_msg->hdr.msg_type, comm_mgr_msg->hdr.submsg_type);
+
     switch(comm_mgr_msg->hdr.msg_type) {
         case COMM_MGR_MSG_PROTOCOL:
             __comm_mgr_lib_protocol_handler(&__comm_mgr_lib_clients[cid], comm_mgr_msg);
@@ -464,7 +471,8 @@ static COMM_MGR_LIB_ERR  __comm_mgr_lib_receive_packets(COMM_MGR_LIB_CLIENT_ID i
 static COMM_MGR_LIB_ERR __comm_mgr_lib_send_msg(COMM_MGR_LIB_CLIENT *client, COMM_MGR_MSG_HDR *hdr, 
                                       char *msg, int len) {
     struct hostent *server = &(client->server);
-    uint32_t comm_msg_size = 0; 
+    uint32_t comm_msg_size = 0;
+
     if (client == NULL) {
         return COMM_MGR_LIB_INVALID_ARG;
     }
@@ -495,9 +503,11 @@ static COMM_MGR_LIB_ERR __comm_mgr_lib_send_msg(COMM_MGR_LIB_CLIENT *client, COM
     //comm_msg_size = sizeof(COMM_MGR_MSG_HDR) + (comm_mgr_msg->hdr.payloadSize * sizeof(char));
     comm_msg_size = COMM_MGR_MSG_SIZE(comm_mgr_msg);
 
-    COMM_MGR_LIB_DEBUG("Sending msg type [%d], src_uid [%d], dst_uid [%d]\n", 
-                    comm_mgr_msg->hdr.msg_type, comm_mgr_msg->hdr.src_uid, comm_mgr_msg->hdr.dst_uid);
-    
+    COMM_MGR_LIB_DEBUG("Sending msg type [%d], submsg_type [%d], size [%d], src_uid [%d], dst_uid [%d]\n", 
+                                            comm_mgr_msg->hdr.msg_type, comm_mgr_msg->hdr.submsg_type, 
+                                            comm_msg_size,
+                                            comm_mgr_msg->hdr.src_uid, comm_mgr_msg->hdr.dst_uid);
+   
     // Now send the message to Communication Manager
     // If its a Protocol packet OR an ACK related to Protocol, enqueue in Protocol DSID
     if ((comm_mgr_msg->hdr.msg_type == COMM_MGR_MSG_PROTOCOL) ||
@@ -509,28 +519,12 @@ static COMM_MGR_LIB_ERR __comm_mgr_lib_send_msg(COMM_MGR_LIB_CLIENT *client, COM
                                                 client->client_ptr->__DSID[COMM_MGR_LIB_DSID_PROTO_SEND]);
             return COMM_MGR_LIB_UTILS_DSID_ERR; 
         }
-        #if 0
- 		// Set the write FD only when, there is something to send from SEND_DSID
-        if(!utils_ds_queue_is_empty(client->client_ptr->__DSID[COMM_MGR_LIB_DSID_PROTO_SEND])) {
-            COMM_MGR_LIB_DEBUG("Data is available on DSID : COMM_MGR_LIB_DSID_PROTO_SEND");
-			FD_SET(client->client_ptr->__fd, 
-                        &(client->client_ptr->__working_write_fd));	
-		}
-       #endif
     } else { // For now, enqueue rest of the packets to DATA DSID
         if(utils_ds_queue_enqueue(client->client_ptr->__DSID[COMM_MGR_LIB_DSID_DATA_SEND], (void *)comm_mgr_msg) < 0) {
             COMM_MGR_LIB_ERROR("Failed to insert the Protocol packet to DSID 0x%0x",
                                             client->client_ptr->__DSID[COMM_MGR_LIB_DSID_DATA_SEND]);
             return COMM_MGR_LIB_UTILS_DSID_ERR; 
         }
-        #if 0
-  		// Set the write FD only when, there is something to send from SEND_DSID
-        if(!utils_ds_queue_is_empty(client->client_ptr->__DSID[COMM_MGR_LIB_DSID_DATA_SEND])) {
-            COMM_MGR_LIB_DEBUG("Data is available on DSID : COMM_MGR_LIB_DSID_DATA_SEND");
-			FD_SET(client->client_ptr->__fd, 
-                        &(client->client_ptr->__working_write_fd));	
-		}    
-        #endif
     }
  
     return COMM_MGR_LIB_SUCCESS;
@@ -684,13 +678,14 @@ COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_statemachine(COMM_MGR_LIB_CLIENT *clien
     This function should do the below:        
         - Create the local lib UID map
         - First send an ACK/NACK for the discovery packet it has received depending on payload 
-        - Create a new protocol comm msg with same state and respond with apps UID
+        - Create a new protocol comm msg with same state and respond with the first dest UID
         - Once it gets gets the ACK packet, should change the client state tp DISCOVERY_DONE
         - Discard any user packets
 */
 static 
 COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_discovery_start(COMM_MGR_LIB_CLIENT *client, 
                                                          COMM_MGR_MSG *msg) {
+    uint16_t payload[COMM_MGR_MSG_PROTOCOL_LIB_DISCOVERY_SIZE/2];                                                         
 
     if(msg->hdr.submsg_type != COMM_MGR_SUBMSG_DISCOVERY) {
         COMM_MGR_LIB_ERROR("Received a non-discovery protocol packet in discovery state");
@@ -715,11 +710,16 @@ COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_discovery_start(COMM_MGR_LIB_CLIENT *cl
         }
     }
 
+    // The Communication Manager usually responds with the Dest UID received in the first Dest UID
+    // sent by the app, in Discovery message
+    payload[0] = COMM_MGR_MSG_PROTOCOL_MAGIC;
+    memcpy(&payload[1], &msg->payload[10], sizeof(uint16_t));
+    COMM_MGR_LIB_DEBUG("Payload[6] in Discovery message = %d\n", payload[1]);
+
     //Create a new protocol comm msg with same state and respond with apps UID
     if(__comm_mgr_lib_send_protocol(client, COMM_MGR_SUBMSG_DISCOVERY, 
-                                   (char *)&(client->client_ptr->__src_uid), 
-                 sizeof(client->client_ptr->__src_uid)) != COMM_MGR_LIB_SUCCESS) {
-        COMM_MGR_LIB_ERROR("Failed to send ACK PROTO packet to Communication Manager");
+                                   (char *)payload, sizeof(payload)) != COMM_MGR_LIB_SUCCESS) {
+        COMM_MGR_LIB_ERROR("Failed to send Discovery message to Communication Manager");
         return COMM_MGR_LIB_PROTO_ERR;
     }
 
@@ -771,23 +771,21 @@ send_nack:
 }
 
 /*
-    Learning happens only when the dest UID in which the app is interested is not
-    Discovered yet. The lib will drop all the user packets to the dest UID till it is
-    data transfer ready
+    Learning messages are sent by the Server when it needs to notify the client library
+    about something the Server has learnt. These kind of messages can come anytime and
+    library needs to honour these messages
 
     Format :
 
-    msg_type = PROTOCOL | submsg_type = LEARNING | payloadsize = 5 (bytes) | 
-                         *payload = COMM_MGR_MSG_PROTOCOL_MAGIC (16) | Dest UID (16)
-
+    msg_type = PROTOCOL | submsg_type = LEARNING | payloadsize = 4 (bytes) | 
+               *payload = COMM_MGR_MSG_PROTOCOL_MAGIC (2) | action (2) | dst_uid (2)
 
 */
 static 
 COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_learning(COMM_MGR_LIB_CLIENT *client,
-                                                  COMM_MGR_MSG *msg,
-                                                  uint8_t isLearnt) {
+                                                  COMM_MGR_MSG *msg) {
 
-    if (msg->hdr.payloadSize != (16*5)) {
+    if (msg->hdr.payloadSize != (COMM_MGR_MSG_PROTOCOL_SRV_LEARNING_SIZE)) {
         COMM_MGR_LIB_ERROR("Bad payloadsize received. Discarding"); 
         goto send_nack;
     }
@@ -799,20 +797,30 @@ COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_learning(COMM_MGR_LIB_CLIENT *client,
         goto send_nack;
     }
 
-    uint16_t dest_uid;
-    memcpy(&dest_uid, &(msg->payload[2]), sizeof(uint16_t));    
+    uint16_t action, dest_uid;
+    memcpy(&action, &(msg->payload[2]), sizeof(uint16_t));    
+    memcpy(&dest_uid, &(msg->payload[4]), sizeof(uint16_t));    
 
     // Validate the Dest UID received
-    if((dest_uid >= comm_mgr_lib_static_uid_base) && (dest_uid < comm_mgr_lib_static_uid_max)) {
-        uint16_t index = dest_uid - comm_mgr_lib_static_uid_base;
-        comm_mgr_lib_static_uid_map[index] = isLearnt;
-    } else if((dest_uid >= comm_mgr_lib_dynamic_uid_base) && (dest_uid < comm_mgr_lib_dynamic_uid_max)) {
-        uint16_t index = dest_uid - comm_mgr_lib_dynamic_uid_base;
-        comm_mgr_lib_dynamic_uid_map[index] = isLearnt;      
-    } else {
+    if(!__comm_mgr_lib_is_uid_valid(dest_uid)) {
         COMM_MGR_LIB_ERROR("Bad Dest UID received in the Learning protocol packet");
         goto send_nack;
     }
+    // Also validate the action message received. 
+    if(action >= COMM_MGR_SUBMSG_LEARNING_ACTION_INVALID) {
+        COMM_MGR_LIB_ERROR("Bad Action received in the Learning protocol packet");
+        goto send_nack;
+    }
+
+    if(__comm_mgr_lib_is_uid_static(dest_uid)) {
+        uint16_t index = dest_uid - comm_mgr_lib_static_uid_base;
+        comm_mgr_lib_static_uid_learning_cache[index] = action;
+    } else {
+        uint16_t index = dest_uid - comm_mgr_lib_dynamic_uid_base;
+        comm_mgr_lib_dynamic_uid_learning_cache[index] = action;      
+    }
+    COMM_MGR_LIB_DEBUG("Received the Learning message with Action [%d], Dest UID [%d]",
+                                                                    action, dest_uid);
 
     return COMM_MGR_LIB_SUCCESS;
 
@@ -833,12 +841,14 @@ send_nack:
 
     Format :
 
-    msg_type = PROTOCOL | submsg_type = LEARNING | payloadsize = 5 (bytes) | 
-                         *payload = COMM_MGR_MSG_PROTOCOL_MAGIC (16) | Dest UID (16)
+    msg_type = PROTOCOL | submsg_type = LEARNING | payloadsize = 6 (bytes) | 
+                      *payload = COMM_MGR_MSG_PROTOCOL_MAGIC (2) | Action(2) | Dest UID (2)
 
+    We can get LEARNING Message with some Actions for a Dest UID depeding on whether the Dest UID is
+    not learnt or learnt by the Communuication Manager.
 
-    We can get LEARNING/DATATXREADY for a Dest UID depeding on whether the Dets UID is
-    not learnt or learnt by the Communuication Manager
+    At this point, the Server can send Learning Messages/System Messages etc. But 99% of the time,
+    only Learning messages will come here. But Discovery messages should never come again here.
 */
 static 
 COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_datatransfer_ready(COMM_MGR_LIB_CLIENT *client, 
@@ -847,14 +857,13 @@ COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_datatransfer_ready(COMM_MGR_LIB_CLIENT 
     COMM_MGR_LIB_ERR ret = COMM_MGR_LIB_SUCCESS;
     // The sub msg can be either Data Tx Ready or Learning. All others are error cases
     if (msg->hdr.submsg_type == COMM_MGR_SUBMSG_DATATXREADY) {
-        ret = __comm_mgr_lib_protocol_learning(client, msg, 1);
-    } else if (msg->hdr.submsg_type == COMM_MGR_SUBMSG_LEARNING) {
-        ret = __comm_mgr_lib_protocol_learning(client, msg, 0);
-    } else {
-        // Will just ignore the other protcol packets
-        // <TODO> Can Communiation Manager forecfully send the Discovery again, to ask the client
-        // to be discovered again ???/ Will handle the case later
+        // <TODO> Can this message be received from the Server. Investigate / extend new feature
         return COMM_MGR_LIB_PROTO_BAD_PACKET;
+    } else if (msg->hdr.submsg_type == COMM_MGR_SUBMSG_LEARNING) {
+        ret = __comm_mgr_lib_protocol_learning(client, msg);
+    } else {
+        // <TODO> For now will ignore other packet types received. Will extend later 
+       return COMM_MGR_LIB_PROTO_BAD_PACKET;
     }
 
     return ret;
@@ -871,23 +880,23 @@ COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_datatransfer_ready(COMM_MGR_LIB_CLIENT 
     If there is any change in the Map info at a later point of time, the 
     Communication Manager can again send via COMM_MGR_MSG_SYSTEM msgs (very rare)
 
-    Data Format of Payload : (each is 16 bit)        
-        payloadsize = 16 * 5
-        COMM_MGR_MSG_PROTOCOL_MAGIC | static_uid_max | static_uid_base | dynamic_uid_max | dynamic_uid_base
+    Data Format of Payload : (each is 2 bytes)        
+        payloadsize = 2 * 6
+        COMM_MGR_MSG_PROTOCOL_MAGIC | static_uid_max | static_uid_base | dynamic_uid_max | dynamic_uid_base | dst_uid
 */
 static 
 COMM_MGR_LIB_ERR __comm_mgr_lib_update_local_uid_map(COMM_MGR_MSG *msg) {
     
     if ((msg->hdr.msg_type == COMM_MGR_MSG_PROTOCOL) &&
        (msg->hdr.submsg_type == COMM_MGR_SUBMSG_DISCOVERY)) { // First time
-        if (msg->hdr.payloadSize != (16*5)) {
+        if (msg->hdr.payloadSize != (COMM_MGR_MSG_PROTOCOL_SRV_DISCOVERY_SIZE)) {
             COMM_MGR_LIB_ERROR("Bad payloadsize received. Discarding"); 
             return COMM_MGR_LIB_BAD_PACKET;
         }
         uint16_t magic;
         memcpy(&magic, &(msg->payload[0]), sizeof(uint16_t));
         if(magic != COMM_MGR_MSG_PROTOCOL_MAGIC) {
-            COMM_MGR_LIB_ERROR("Bad payloadsize received. Discarding"); 
+            COMM_MGR_LIB_ERROR("Bad magic received. Discarding"); 
             return COMM_MGR_LIB_BAD_PACKET;
         }
 
@@ -913,28 +922,48 @@ COMM_MGR_LIB_ERR __comm_mgr_lib_update_local_uid_map(COMM_MGR_MSG *msg) {
     // <TODO >Actually make a copy before deleting the current and creating a new map
     // And again copy the map back. But a rare case that, this kind of map changes comes
     // again via COMM_MGR_MSG_SYSTEM
-    uint16_t *temp_comm_mgr_lib_static_uid_map;
-    uint16_t *temp_comm_mgr_lib_dynamic_uid_map;
+    uint16_t *temp_comm_mgr_lib_static_uid_learning_cache;
+    uint16_t *temp_comm_mgr_lib_dynamic_uid_learning_cache;
 
     // Free te map if it has already been allocated before. (update case : via COMM_MGR_MSG_SYSTEM)
-    if (comm_mgr_lib_static_uid_map) {                
-        free(comm_mgr_lib_static_uid_map);
+    if (comm_mgr_lib_static_uid_learning_cache) {                
+        free(comm_mgr_lib_static_uid_learning_cache);
     }
 
-    if(comm_mgr_lib_dynamic_uid_map) {
-        free(comm_mgr_lib_dynamic_uid_map);
+    if(comm_mgr_lib_dynamic_uid_learning_cache) {
+        free(comm_mgr_lib_dynamic_uid_learning_cache);
     }
 
-    uint32_t static_uid_map_size = sizeof(uint16_t) * (comm_mgr_lib_static_uid_max - comm_mgr_lib_static_uid_base);
-    uint32_t dynamic_uid_map_size = sizeof(uint16_t) * (comm_mgr_lib_dynamic_uid_max - comm_mgr_lib_dynamic_uid_base);
+    uint32_t static_uid_cache_size = sizeof(uint16_t) * (comm_mgr_lib_static_uid_max - comm_mgr_lib_static_uid_base);
+    uint32_t dynamic_uid_cache_size = sizeof(uint16_t) * (comm_mgr_lib_dynamic_uid_max - comm_mgr_lib_dynamic_uid_base);
 
-    comm_mgr_lib_static_uid_map = (uint16_t *)malloc(static_uid_map_size);
-    comm_mgr_lib_dynamic_uid_map = (uint16_t *)malloc(dynamic_uid_map_size);
+    comm_mgr_lib_static_uid_learning_cache = (uint16_t *)malloc(static_uid_cache_size);
+    comm_mgr_lib_dynamic_uid_learning_cache = (uint16_t *)malloc(dynamic_uid_cache_size);
 
-    memset(comm_mgr_lib_static_uid_map, 0, static_uid_map_size);
-    memset(comm_mgr_lib_dynamic_uid_map, 0, dynamic_uid_map_size);
+    // By default, all Dest UIDs are not reachable by the library
+    memset(comm_mgr_lib_static_uid_learning_cache, COMM_MGR_SUBMSG_LEARNING_ACTION_STOP, static_uid_cache_size);
+    memset(comm_mgr_lib_dynamic_uid_learning_cache, COMM_MGR_SUBMSG_LEARNING_ACTION_STOP, dynamic_uid_cache_size);
 
     return COMM_MGR_LIB_SUCCESS;
+}
+
+static boolean __comm_mgr_lib_is_uid_valid(uint16_t uid) {
+    if (((uid >= comm_mgr_lib_static_uid_base) &&  
+        (uid < comm_mgr_lib_static_uid_max)) ||
+        ((uid >= comm_mgr_lib_dynamic_uid_base) &&
+        (uid < comm_mgr_lib_dynamic_uid_max))) {
+        return TRUE;
+    }   
+    return FALSE; 
+}
+
+// UID should have been validated using __comm_mgr_srv_is_uid_valid
+static boolean __comm_mgr_lib_is_uid_static(uint16_t uid) {
+    if ((uid >= comm_mgr_lib_static_uid_base) &&  
+        (uid < comm_mgr_lib_static_uid_max)) {
+        return TRUE;
+    }   
+    return FALSE;
 }
 
 /*
@@ -974,6 +1003,7 @@ static COMM_MGR_LIB_ERR __comm_mgr_lib_server_communicator_with_select(COMM_MGR_
     COMM_MGR_MSG *msg;
     uint32_t comm_msg_size = 0;
     uint32_t default_select_timeout = COMM_MGR_LIB_DEFAULT_SELECT_TIMEOUT;
+    char datastream[COMM_MGR_PACKET_MAX_SIZE];
 
     if(cid > COMM_MGR_LIB_MAX_CLIENTS) {
         COMM_MGR_LIB_ERROR("Invalid client");
@@ -1047,6 +1077,10 @@ static COMM_MGR_LIB_ERR __comm_mgr_lib_server_communicator_with_select(COMM_MGR_
 					}
 					break;
 				}
+                if(recv_count == 0) {
+                    COMM_MGR_LIB_ERROR("The Communication Manager Server has shutdown. Exiting");
+                    goto cleanup_and_exit;
+                }
 				// Enqueue the received data to proto/data DSID. 
 				__comm_mgr_lib_receive_packets(id, recv_buffer, recv_count);
 			} while(recv_count > 0);	
@@ -1055,15 +1089,29 @@ static COMM_MGR_LIB_ERR __comm_mgr_lib_server_communicator_with_select(COMM_MGR_
 		// Check if the FD is writable
 		if (FD_ISSET(__comm_mgr_lib_clients[cid].client_ptr->__fd , working_write_fd)) {			
 			do {
-                // Check the send DSID if something is available to be sent
-                msg = (COMM_MGR_MSG *)utils_ds_queue_dequeue( \
-                            __comm_mgr_lib_clients[cid].client_ptr->__DSID[COMM_MGR_LIB_DSID_DATA_SEND]);		
+                // Check the send DSID if something is available to be sent. But priotize PROTO packets
+                if(!utils_ds_queue_is_empty(__comm_mgr_lib_clients[cid].client_ptr->__DSID[COMM_MGR_LIB_DSID_PROTO_SEND])) {
+                     msg = (COMM_MGR_MSG *)utils_ds_queue_dequeue( \
+                                __comm_mgr_lib_clients[cid].client_ptr->__DSID[COMM_MGR_LIB_DSID_PROTO_SEND]);
+                } else if (!utils_ds_queue_is_empty(__comm_mgr_lib_clients[cid].client_ptr->__DSID[COMM_MGR_LIB_DSID_DATA_SEND])) {
+                     msg = (COMM_MGR_MSG *)utils_ds_queue_dequeue( \
+                                __comm_mgr_lib_clients[cid].client_ptr->__DSID[COMM_MGR_LIB_DSID_DATA_SEND]);		                   
+                } else { // If DSID is empty, abort sending till there is some activity on one of the DSIDs
+                    FD_ZERO(working_write_fd);
+                    break;                   
+                }
+
                 if(msg == NULL) { // If DSID is empty, abort sending till there is some activity on this DSID
                     FD_ZERO(working_write_fd);
                     break;
                 }
+
                 comm_msg_size = COMM_MGR_MSG_SIZE(msg);
-                send_count = send(__comm_mgr_lib_clients[cid].client_ptr->__fd, msg, comm_msg_size, 0);
+                memset(datastream, 0, sizeof(datastream));
+                memcpy(datastream, msg, sizeof(COMM_MGR_MSG_HDR));
+                memcpy(datastream + sizeof(COMM_MGR_MSG_HDR), msg->payload, msg->hdr.payloadSize);
+
+                send_count = send(__comm_mgr_lib_clients[cid].client_ptr->__fd, datastream, comm_msg_size, 0);
                 if (send_count < 0) {
                     if (errno == EAGAIN || errno == EWOULDBLOCK) {
                         COMM_MGR_LIB_TRACE("Communication Manager is not ready right now, try again later");
@@ -1078,7 +1126,8 @@ static COMM_MGR_LIB_ERR __comm_mgr_lib_server_communicator_with_select(COMM_MGR_
                 }
 
                 if(send_count == comm_msg_size) {
-                    COMM_MGR_LIB_DEBUG("Sent the message to Communication Manager successfully");                    
+                    COMM_MGR_LIB_DEBUG("Sent the message, type [%d], subtype [%d], size [%d] to Communication Manager successfully",
+                                            msg->hdr.msg_type, msg->hdr.submsg_type, comm_msg_size);
                 }
 			} while(send_count > 0);
 		}

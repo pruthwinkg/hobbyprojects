@@ -35,8 +35,20 @@ COMM_MGR_SRV_ERR comm_mgr_srv_create_uds_master(uint16_t *masterID, COMM_MGR_SRV
         COMM_MGR_SRV_ERROR("Failed to create a UDS master instance");
         return COMM_MGR_SRV_UDS_MASTER_INIT_ERR;
     }
+
+    // Create a Circular Queue for storing the data to be sent to clients
+    queue.type = UTILS_QUEUE_CIRCULAR;
+    queue.size = UDS_MASTER_SEND_QUEUE_SIZE;
+    queue.isPriority = FALSE;
+    uds_master.__DSID[COMM_MGR_SRV_DSID_SEND] = utils_ds_queue_create(&queue);
+    if (uds_master.__DSID[COMM_MGR_SRV_DSID_SEND] == 0) {
+        COMM_MGR_SRV_ERROR("Failed to create a UDS master instance");
+        return COMM_MGR_SRV_UDS_MASTER_INIT_ERR;
+    }
+
     uds_master.__dsid_cb[COMM_MGR_SRV_DSID_RECV] = comm_mgr_srv_uds_master_recv_data;
     uds_master.__dsid_cb[COMM_MGR_SRV_DSID_PROTO] = comm_mgr_srv_uds_master_proto_data;
+    uds_master.__dsid_cb[COMM_MGR_SRV_DSID_SEND] = comm_mgr_srv_uds_master_send_data;
 
     ret = comm_mgr_srv_init_master(&uds_master);
     if (ret != COMM_MGR_SRV_SUCCESS) {
@@ -55,7 +67,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_create_uds_master(uint16_t *masterID, COMM_MGR_SRV
             comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_UDS_REQ].arg = (void *)g_masterID;    
             comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_UDS_PROCESS].arg = (void *)g_masterID;
             comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_UDS_RES_STATIC_UID].arg = (void *)g_masterID;
-            comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_UDS_RES_STATIC_UID].arg = (void *)g_masterID;
+            comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_UDS_RES_DYNAMIC_UID].arg = (void *)g_masterID;
             break;
         default:
             COMM_MGR_SRV_ERROR("Not yet supported");
@@ -177,31 +189,49 @@ void* comm_mgr_srv_uds_response_dynamic_handler(void *arg) {
     utils_ds is data agnostic library. Its upto the apps to make sure that
     correct data is decoded.
 
-    Note : In the 'arg', the Communication Manager Core sends us the server fd
+   Note : In the 'arg', the Communication Manager Core sends us the server fd
           on which the data is received. Map it to UID
 
     Data Format :
        | Magic (UDS) | Data len | Data (COMM_MGR_MSG) |
+
+    Note : There can be multiple messages in the data received by the Comm Server Core.
+        We need identify those indivisual messages and enqueue properly
+
 */
 COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_recv_data(UTILS_DS_ID id, 
                                         char *data, uint32_t len, void *arg) {
     boolean priority = FALSE; // This flag needs to be set depending on the
                               // payload received
     uint32_t server_fd = *(uint32_t *)arg;
-    // Server fd is sent in 'arg'. Alloc 4 bytes for storing this fd                             
-    COMM_MGR_SRV_UDS_MSG *uds_msg = __comm_mgr_srv_uds_msg_encode(data, len, (void *)&server_fd, sizeof(uint32_t));
-    if (uds_msg == NULL) {
-        COMM_MGR_SRV_ERROR("Failed to allocate memory");
-        return COMM_MGR_SRV_OUT_OF_MEMORY;
+
+    // Check if there are multiple messages in this msg. But all those messages
+    // are guranteed by the Comm Server Core to belong to server_fd
+    COMM_MGR_MSG *comm_msg = (COMM_MGR_MSG*)data;
+    uint32_t comm_msg_size;
+
+    // Find all the available comm msgs in this byte stream
+    while(comm_msg) {
+        // Server fd is sent in 'arg'. Alloc 4 bytes for storing this fd                             
+        //COMM_MGR_SRV_UDS_MSG *uds_msg = __comm_mgr_srv_uds_msg_encode(data, len, (void *)&server_fd, sizeof(uint32_t)); 
+        COMM_MGR_SRV_UDS_MSG *uds_msg = __comm_mgr_srv_uds_msg_encode((char *)comm_msg, 
+                                               COMM_MGR_MSG_SIZE(comm_msg), (void *)&server_fd, sizeof(uint32_t));
+        if (uds_msg == NULL) {
+            COMM_MGR_SRV_ERROR("Failed to allocate memory");
+            return COMM_MGR_SRV_OUT_OF_MEMORY;
+        }
+
+        COMM_MGR_SRV_DEBUG("Inserting data to DSID 0x%0x, len = %d, server fd = %d", id, len, server_fd);
+        // Insert the data to Queue
+        if(utils_ds_queue_enqueue(id, (void *)uds_msg) < 0) {
+            COMM_MGR_SRV_ERROR("Failed to insert the data to DSID 0x%0x", id);
+            //return COMM_MGR_SRV_UTILS_DSID_ERR; // Out of multiple msgs if one fails, we shouldnt stop
+                            // sending event out for other msgs we have enqueued
+        }
+        comm_msg = comm_mgr_get_next_msg((char *)comm_msg);         
     }
 
-    COMM_MGR_SRV_DEBUG("Inserting data to DSID 0x%0x, len = %d, server fd = %d", id, len, server_fd);
-    // Insert the data to Queue
-    if(utils_ds_queue_enqueue(id, (void *)uds_msg) < 0) {
-        COMM_MGR_SRV_ERROR("Failed to insert the data to DSID 0x%0x", id);
-        return COMM_MGR_SRV_UTILS_DSID_ERR;
-    }
-
+    // Finally send one event for all those msgs
     utils_task_handlers_send_event(TRUE, COMM_MGR_SRV_LOCAL_EVENT_RECV_READY, priority);
 
     return COMM_MGR_SRV_SUCCESS;
@@ -238,7 +268,36 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_proto_data(UTILS_DS_ID id,
     return COMM_MGR_SRV_SUCCESS;
 }
 
+/*
+    This function is used to send regular data packets to the destination UID
+    This function doesnt do any memory allocations to keep it light. Any actions
+    also will be honoured directly from the srv_msg without requiring to encode
+    in UDS message format
+   
+    Since it is best effort, in case of any error case, the data will be dropped
+    and sender will be notified only if required (explicitly asked by sender)
+*/
+COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_send_data(UTILS_DS_ID id,
+                                                char *data, uint32_t len, void *arg) {
+    boolean priority = FALSE;
 
+    if (arg == NULL) {
+        COMM_MGR_SRV_ERROR("Invalid argument. arg is NULL");
+        return COMM_MGR_SRV_INVALID_ARG;
+    }
+    COMM_MGR_SRV_MSG *srv_msg = (COMM_MGR_SRV_MSG *)arg;
+
+    COMM_MGR_SRV_DEBUG("Inserting data to DSID 0x%0x, len = %d", id, len);
+    // Insert the data to Queue
+    if(utils_ds_queue_enqueue(id, (void *)srv_msg) < 0) {
+        COMM_MGR_SRV_ERROR("Failed to insert the data to DSID 0x%0x", id);
+        return COMM_MGR_SRV_UTILS_DSID_ERR;
+    }
+   
+    utils_task_handlers_send_event(TRUE, COMM_MGR_SRV_LOCAL_EVENT_DATA_SEND, priority); 
+
+    return COMM_MGR_SRV_SUCCESS;
+}
 
 
 
@@ -279,9 +338,11 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_process_events(uint16_t masterID, boolean isLo
                         uds_msg->action = UDS_MASTER_MSG_ACTION_DROP; // Drop the packet, if unable to get the comm msg (Bad Comm packet)
                         __comm_mgr_srv_uds_msg_action(uds_msg);
                         continue; // Process next in queue
-                    }                    
-                    COMM_MGR_SRV_DEBUG("Event %d, msg type = %d, src uid = %d, dst uid = %d, payload size = %d", 
-                                                            ev, comm_mgr_msg->hdr.msg_type, comm_mgr_msg->hdr.src_uid, 
+                    }
+
+                    COMM_MGR_SRV_DEBUG("Event %d, msg type = %d, submsg_type = %d, src uid = %d, dst uid = %d, payload size = %d", 
+                                                            ev, comm_mgr_msg->hdr.msg_type, comm_mgr_msg->hdr.submsg_type, 
+                                                            comm_mgr_msg->hdr.src_uid, 
                                                             comm_mgr_msg->hdr.dst_uid, comm_mgr_msg->hdr.payloadSize);
                     
                     //COMM_MGR_SRV_MSG is the message format used by Comm Mgr to carry internal headers + actual comm msg
@@ -292,6 +353,10 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_process_events(uint16_t masterID, boolean isLo
                     
                     // Process the packet
                     // <TODO> All the ACTIONs can be offloaded to a housekeeping TASK <TODO> <TODO>
+
+                    // <TODO TODO TODO>
+                    // Free the UDS msg, comm_mgr_msg, comm_mgr_srv_msg
+
                     ret = comm_mgr_srv_protocol_process_packet(comm_mgr_srv_msg);
                     if(ret == COMM_MGR_SRV_PROTO_BAD_PACKET) { // If its a bad packet drop it
                         uds_msg->action = UDS_MASTER_MSG_ACTION_DROP; // Drop the packet
@@ -346,8 +411,9 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_process_events(uint16_t masterID, boolean isLo
                         //COMM_MGR_SRV_ERR("Failed to send the comm msg.");
                         // <TODO> We might need to set the packet to UDS_MASTER_MSG_ACTION_HOLD to try again later 
                     } else if (ret == COMM_MGR_SRV_SUCCESS) {
-                        COMM_MGR_SRV_DEBUG("Sent the Protocol Packet msg_type [%d] to UID [%d] successfully",
+                        COMM_MGR_SRV_DEBUG("Sent the Protocol Packet msg_type [%d], sub_type [%d] to UID [%d] successfully",
                                                                 comm_mgr_srv_msg->msg->hdr.msg_type, 
+                                                                comm_mgr_srv_msg->msg->hdr.submsg_type, 
                                                                 comm_mgr_srv_msg->msg->hdr.dst_uid);
                         // Upon successful send anyway drop the packet
                         uds_msg->action = UDS_MASTER_MSG_ACTION_DROP; // Drop the packet
@@ -358,7 +424,34 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_process_events(uint16_t masterID, boolean isLo
                                                     master->__DSID[COMM_MGR_SRV_DSID_PROTO], event);
             }
             break;
+        case COMM_MGR_SRV_LOCAL_EVENT_DATA_SEND:
+            //Process all the old data packets as well
+            {
+                while(TRUE) {
+                    COMM_MGR_SRV_MSG *srv_msg = (COMM_MGR_SRV_MSG *)utils_ds_queue_dequeue(master->__DSID[COMM_MGR_SRV_DSID_SEND]);
+                    if (srv_msg == NULL) {
+                        break; // Queue is empty
+                    }                  
 
+                    // Send the data packet to the client
+                    ret = comm_mgr_srv_send_data(master, srv_msg);
+                    if(ret != COMM_MGR_SRV_SUCCESS) {
+                        //COMM_MGR_SRV_ERR("Failed to send the comm msg.");
+                        // <TODO> We might need to set the packet to UDS_MASTER_MSG_ACTION_HOLD to try again later 
+                    } else if (ret == COMM_MGR_SRV_SUCCESS) {
+                        COMM_MGR_SRV_DEBUG("Sent the Data Packet msg_type [%d], sub_type [%d], Dest UID [%d], Src UID [%d] successfully",
+                                                                srv_msg->msg->hdr.msg_type, 
+                                                                srv_msg->msg->hdr.submsg_type, 
+                                                                srv_msg->msg->hdr.dst_uid,
+                                                                srv_msg->msg->hdr.src_uid);
+                        comm_mgr_srv_msg_action(srv_msg);
+                    }
+                }
+                COMM_MGR_SRV_DEBUG("Processed the DSID [0x%0x] completely for event %d", 
+                                                    master->__DSID[COMM_MGR_SRV_DSID_SEND], event);
+            }
+
+            break;
         default:
             return COMM_MGR_SRV_UNKNOWN_EVENT;
     }
@@ -378,11 +471,13 @@ void comm_mgr_srv_uds_process_register_events(uint32_t taskID) {
 void comm_mgr_srv_uds_response_static_register_events(uint32_t taskID) {
 
     utils_task_handlers_register_event(COMM_MGR_SRV_LOCAL_EVENT_PROTO_SEND, taskID);    
+    utils_task_handlers_register_event(COMM_MGR_SRV_LOCAL_EVENT_DATA_SEND, taskID);    
 }
 
 void comm_mgr_srv_uds_response_dynamic_register_events(uint32_t taskID) {
 
     utils_task_handlers_register_event(COMM_MGR_SRV_LOCAL_EVENT_PROTO_SEND, taskID);    
+    utils_task_handlers_register_event(COMM_MGR_SRV_LOCAL_EVENT_DATA_SEND, taskID);    
 }
 
 

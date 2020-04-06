@@ -111,9 +111,11 @@ static COMM_MGR_LIB_ERR __comm_mgr_lib_ack_handler(COMM_MGR_LIB_CLIENT *client, 
 static COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_statemachine(COMM_MGR_LIB_CLIENT *client, COMM_MGR_MSG *msg);
 static COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_discovery_start(COMM_MGR_LIB_CLIENT *client, COMM_MGR_MSG *msg);
 static COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_discovery_done(COMM_MGR_LIB_CLIENT *client, COMM_MGR_MSG *msg);
-static COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_learning(COMM_MGR_LIB_CLIENT *client, COMM_MGR_MSG *msg, uint8_t isLearnt);
+static COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_learning(COMM_MGR_LIB_CLIENT *client, COMM_MGR_MSG *msg);
 static COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_datatransfer_ready(COMM_MGR_LIB_CLIENT *client, COMM_MGR_MSG *msg);
 static COMM_MGR_LIB_ERR __comm_mgr_lib_update_local_uid_map(COMM_MGR_MSG *msg);
+static boolean __comm_mgr_lib_is_uid_valid(uint16_t uid);
+static boolean __comm_mgr_lib_is_uid_static(uint16_t uid);
 static COMM_MGR_LIB_ERR __comm_mgr_lib_server_communicator_with_epoll(COMM_MGR_LIB_CLIENT_ID id);
 static COMM_MGR_LIB_ERR __comm_mgr_lib_server_communicator_with_select(COMM_MGR_LIB_CLIENT_ID id);
 #endif /* INCLUDE_COMM_MGR_LIB_H__ */

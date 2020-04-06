@@ -16,7 +16,10 @@
 #define TEST_COMM_MGR_LIB
 #define TEST_UNIX_AF
 
-#define TEST_COMM_MGR_LIB_UID   (10000)
+#define TEST_COMM_MGR_LIB_SRC_UID   (1022) // Static UID
+#define TEST_COMM_MGR_LIB_DST_UID   (1023) // Static UID
+
+boolean comm_mgr_test_app_communication_on = FALSE;
 
 #ifdef TEST_COMM_MGR_LIB
 
@@ -30,7 +33,7 @@ int main() {
     COMM_MGR_MSG *comm_msg;
     int len = 0;
 
-    comm_mgr_lib_init(LOG_LVL_DEBUG, TEST_COMM_MGR_LIB_UID, FALSE);
+    comm_mgr_lib_init(LOG_LVL_DEBUG, TEST_COMM_MGR_LIB_SRC_UID, FALSE);
     COMM_MGR_LIB_TRACE("Starting the test of %s\n", COMM_MGR_LIB_NAME);
 
 
@@ -108,8 +111,12 @@ void *comm_mgr_test_app_communication_handler(void *arg) {
 
     COMM_MGR_LIB_ERR rc = COMM_MGR_LIB_SUCCESS;
 
+    comm_mgr_test_app_communication_on = TRUE;
     rc = comm_mgr_lib_server_communicator(cid);
+    comm_mgr_test_app_communication_on = FALSE;
 
+    COMM_MGR_LIB_ERROR("Communication Manager Library - Server Communicator is exiting !!!!");
+    return NULL;
 }
 
 // This task is for doing the house keeping tasks related to this app
@@ -133,7 +140,15 @@ void *comm_mgr_test_app_housekeeper(void *arg) {
 
     fflush(STDIN_FILENO);
     while( (rc=read(STDIN_FILENO, buf, sizeof(buf))) > 0) {
-        if(comm_mgr_lib_send_data(cid, 1, buf, strlen(buf)) != COMM_MGR_LIB_SUCCESS ) {
+        if (comm_mgr_test_app_communication_on == FALSE) {
+            COMM_MGR_LIB_DEBUG("Communication System of this test app is not ON. Cannot send data. Exiting");
+            break;
+        }
+
+        COMM_MGR_LIB_DEBUG("Sending data to dst_uid [%d], src_uid [%d]", 
+                                    TEST_COMM_MGR_LIB_DST_UID, TEST_COMM_MGR_LIB_SRC_UID);
+    
+        if(comm_mgr_lib_send_data(cid, TEST_COMM_MGR_LIB_DST_UID, buf, strlen(buf)) != COMM_MGR_LIB_SUCCESS ) {
             COMM_MGR_LIB_ERROR("Failed to send the data : %s", buf);
         }
         memset(buf, 0, sizeof(buf));

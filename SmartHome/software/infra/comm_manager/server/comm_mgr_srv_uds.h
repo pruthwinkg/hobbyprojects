@@ -9,6 +9,7 @@
 #include "comm_mgr_srv_protocol.h"
 
 #define UDS_MASTER_RECV_QUEUE_SIZE      (5)
+#define UDS_MASTER_SEND_QUEUE_SIZE      (5)
 #define UDS_MASTER_MSG_MAGIC_NUM        (0x2468)
 
 // Actions on UDS messages
@@ -40,6 +41,7 @@ void* comm_mgr_srv_uds_response_static_handler(void *arg);
 void* comm_mgr_srv_uds_response_dynamic_handler(void *arg);
 COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_recv_data(UTILS_DS_ID id, char *data, uint32_t len, void *arg);
 COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_proto_data(UTILS_DS_ID id, char *data, uint32_t len, void *arg);
+COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_send_data(UTILS_DS_ID id, char *data, uint32_t len, void *arg);
 COMM_MGR_SRV_ERR comm_mgr_srv_uds_process_events(uint16_t masterID, boolean isLocalMode, uint32_t event);
 
 void comm_mgr_srv_uds_process_register_events(uint32_t taskID);

@@ -23,6 +23,12 @@
 #define COMM_MGR_MSG_HDR_MAJOR_VER      (0)
 #define COMM_MGR_MSG_HDR_MINOR_VER      (1)
 
+// Standard Protocol Payload sizes (In bytes)
+#define COMM_MGR_MSG_PROTOCOL_SRV_DISCOVERY_SIZE     (12) // Sent by Server to Client
+#define COMM_MGR_MSG_PROTOCOL_LIB_DISCOVERY_SIZE     (4)  // Sent by client to Server
+#define COMM_MGR_MSG_PROTOCOL_SRV_LEARNING_SIZE      (6)  // Always sent by Server to client
+
+
 // Below structure defines the header for the comm mgr header
 typedef struct {
     uint32_t magic; // Unique number to safeguard/delimit pkts
@@ -52,6 +58,10 @@ typedef struct {
 COMM_MGR_MSG* comm_mgr_create_msg(uint16_t src_uid, uint16_t dst_uid, 
                                  COMM_MGR_MSG_TYPE msg_type, char *payload, 
                                  uint16_t payloadSize);
+COMM_MGR_MSG comm_mgr_create_msg_hdr(uint16_t src_uid, uint16_t dst_uid, 
+                                    COMM_MGR_MSG_TYPE msg_type, 
+                                    uint16_t payloadSize);
 COMM_MGR_MSG* comm_mgr_get_msg(char *msg, uint16_t len);
+COMM_MGR_MSG* comm_mgr_get_next_msg(char *msg);
 void comm_mgr_print_msg_hdr(COMM_MGR_MSG *msg, char *buf, uint16_t len);
 #endif /* INCLUDE_COMM_MGR_CMN_H__ */ 
