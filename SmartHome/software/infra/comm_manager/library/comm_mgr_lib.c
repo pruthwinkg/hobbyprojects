@@ -453,7 +453,7 @@ static COMM_MGR_LIB_ERR  __comm_mgr_lib_receive_packets(COMM_MGR_LIB_CLIENT_ID i
             __comm_mgr_lib_ack_handler(&__comm_mgr_lib_clients[cid], comm_mgr_msg);
             break;
         case COMM_MGR_MSG_DATA:
-
+            __comm_mgr_lib_data_handler(&__comm_mgr_lib_clients[cid], comm_mgr_msg);
             break;
         default:
             return COMM_MGR_LIB_BAD_PACKET;
@@ -622,6 +622,23 @@ static COMM_MGR_LIB_ERR __comm_mgr_lib_ack_handler(COMM_MGR_LIB_CLIENT *client, 
             COMM_MGR_LIB_ERROR("Received a bad ack packet");
             return COMM_MGR_LIB_ACK_BAD_PACKET;
     }
+    return COMM_MGR_LIB_SUCCESS;
+}
+
+/*
+    This function takes care of handlig the Data packets coming to the client. The Data ACK/NACK
+    will be handled by the ack_handler
+
+    COMM_MGR_LIB_DSID_DATA_RECV will be used to enqueue the Data Packets. The applications need
+    to either poll for this DSID or setup an event and get notification from the library as well.
+
+    The event notification mechanism is recommended. To get notification, enable the events on the
+    comunication task and register for default data event provided by the comm library
+*/
+static COMM_MGR_LIB_ERR __comm_mgr_lib_data_handler(COMM_MGR_LIB_CLIENT *client, COMM_MGR_MSG *msg) {
+
+    COMM_MGR_LIB_DEBUG("Received the message %s", msg->payload);
+
     return COMM_MGR_LIB_SUCCESS;
 }
 

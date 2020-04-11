@@ -49,6 +49,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_create_uds_master(uint16_t *masterID, COMM_MGR_SRV
     uds_master.__dsid_cb[COMM_MGR_SRV_DSID_RECV] = comm_mgr_srv_uds_master_recv_data;
     uds_master.__dsid_cb[COMM_MGR_SRV_DSID_PROTO] = comm_mgr_srv_uds_master_proto_data;
     uds_master.__dsid_cb[COMM_MGR_SRV_DSID_SEND] = comm_mgr_srv_uds_master_send_data;
+    uds_master.__dsid_cb[COMM_MGR_SRV_DSID_HOUSEKEEP] = comm_mgr_srv_uds_master_housekeeper;
 
     ret = comm_mgr_srv_init_master(&uds_master);
     if (ret != COMM_MGR_SRV_SUCCESS) {
@@ -173,7 +174,32 @@ void* comm_mgr_srv_uds_response_dynamic_handler(void *arg) {
     }
 }
 
+void* comm_mgr_srv_uds_housekeeping_handler(void *arg) {
+    if (arg == NULL) {
+        COMM_MGR_SRV_ERROR("Invalid Master ID");
+        return NULL;
+    }
+    uint16_t masterID = *(uint16_t *)arg;
+    COMM_MGR_SRV_TRACE("%s ready to handle housekeeping tasks from master ID %d", 
+                COMM_MGR_SRV_APP_NAME, masterID);
+  
+    // The process thread should signal the response thread to go and read from protocol Queue
+    boolean run_uds_housekeeping_loop = TRUE;
+    uint16_t eventListSize = 5;
+    uint32_t eventList[eventListSize];
+    uint16_t eventsRead = 0;
 
+    while(run_uds_housekeeping_loop) {
+       eventsRead = utils_task_handlers_get_events(eventList, eventListSize);
+       for (uint16_t i = 0; i < eventsRead; i++) {
+            if(UTILS_TASK_HANDLER_EVENT_IS_GLOBAL(eventList[i])) {
+                comm_mgr_srv_uds_process_events(masterID, FALSE, UTILS_TASK_HANDLER_EVENT_GET(eventList[i]));    
+            } else {
+                comm_mgr_srv_uds_process_events(masterID, TRUE, UTILS_TASK_HANDLER_EVENT_GET(eventList[i]));
+            }
+       }
+    }
+}
 
 
 /*
@@ -299,7 +325,36 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_send_data(UTILS_DS_ID id,
     return COMM_MGR_SRV_SUCCESS;
 }
 
+/*
+    This DSID callback is used to send jobs to the HouseKeeping task to perform
+    certain actions/tasks on its behalf.
 
+    The jobs are enqued in COMM_MGR_SRV_UDS_HK_JOB structure format
+
+    Here the caller has to allocate the memory to arg before calling this
+*/
+COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_housekeeper(UTILS_DS_ID id,
+                                                     char *data, uint32_t len, void *arg) {
+    boolean priority = FALSE;
+
+    if (arg == NULL) {
+        COMM_MGR_SRV_ERROR("Invalid argument. arg is NULL");
+        return COMM_MGR_SRV_INVALID_ARG;
+    }
+
+    COMM_MGR_SRV_UDS_HK_JOB *hk_job = (COMM_MGR_SRV_UDS_HK_JOB *)arg;
+
+    COMM_MGR_SRV_DEBUG("Inserting data to DSID 0x%0x, len = %d", id, len);
+    // Insert the data to Queue
+    if(utils_ds_queue_enqueue(id, (void *)hk_job) < 0) {
+        COMM_MGR_SRV_ERROR("Failed to insert the data to DSID 0x%0x", id);
+        return COMM_MGR_SRV_UTILS_DSID_ERR;
+    }
+   
+    utils_task_handlers_send_event(TRUE, COMM_MGR_SRV_LOCAL_EVENT_HOUSEKEEP, priority);
+
+    return COMM_MGR_SRV_SUCCESS;
+}
 
 COMM_MGR_SRV_ERR comm_mgr_srv_uds_process_events(uint16_t masterID, boolean isLocalMode, uint32_t event) {
     COMM_MGR_SRV_LOCAL_EVENT ev = (COMM_MGR_SRV_LOCAL_EVENT)event;
@@ -452,12 +507,29 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_process_events(uint16_t masterID, boolean isLo
             }
 
             break;
+        case COMM_MGR_SRV_LOCAL_EVENT_HOUSEKEEP:
+            comm_mgr_srv_uds_handle_housekeeping_events();
+            break;
         default:
             return COMM_MGR_SRV_UNKNOWN_EVENT;
     }
     return COMM_MGR_SRV_SUCCESS;
 }
 
+void comm_mgr_srv_uds_handle_housekeeping_events() {
+    boolean handle_housekeeping_event_loop = TRUE;
+
+    while(handle_housekeeping_event_loop) {
+    // Process all the house keeping events which are pending
+        COMM_MGR_SRV_UDS_HK_JOB *hk_job = (COMM_MGR_SRV_UDS_HK_JOB *)utils_ds_queue_dequeue(master->__DSID[COMM_MGR_SRV_DSID_HOUSEKEEP]);
+        if(hk_job == NULL) {
+            break; // Queue is empty
+        }
+
+    }
+    COMM_MGR_SRV_DEBUG("Processed the DSID [0x%0x] completely for event %d", 
+                           master->__DSID[COMM_MGR_SRV_DSID_HOUSEKEEP], event);
+}
 
 // This will be called by the utils_task_handler lib to generate
 // various tables for managing the events for this task

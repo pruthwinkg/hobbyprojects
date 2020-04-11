@@ -31,6 +31,25 @@ typedef struct {
     uint32_t arg_size;
 } COMM_MGR_SRV_UDS_MSG;
 
+// Custom UDS events
+typedef enum {
+    COMM_MGR_SRV_UDS_HK_EVENT_1 = COMM_MGR_SRV_HOUSEKEEP_EVENT_MAX,
+
+} COMM_MGR_SRV_UDS_HK_EVENT;
+
+/* 
+    This data structure is used internally by the UDS server instance for managing
+    the jobs given to the Housekeeping task handler
+
+    The Housekeeping jobs are identified by event. Depeding on the event, the Housekeeping
+    task handler will perform actions using the other metadata available in the job
+*/
+typedef struct {
+    uint8_t event;
+    uint8_t priority; // Lower the value, higher priority
+    void *eventData; // event specific data
+} COMM_MGR_SRV_UDS_HK_JOB;
+
 /*****************************************************************************
                                Public Functions
 *****************************************************************************/

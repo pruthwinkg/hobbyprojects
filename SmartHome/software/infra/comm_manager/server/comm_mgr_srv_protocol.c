@@ -687,6 +687,10 @@ static COMM_MGR_SRV_ERR __comm_mgr_srv_protocol_datattransfer_ready(uint16_t uid
         // We dont have to notify the src UID here. Simply forward the data to dest UID
         
         COMM_MGR_SRV_DEBUG("FINALLY THE PACKETS ARE ACTUALLY GOING TO THE DESTINATION APP!!!!");
+        
+        // Since the data is now ready to be forwarded, put the dest fd in the srv_msg
+        srv_msg->server_fd = dest_proto_tbl->server_fd; // This actually does the magic of forwarding
+
         ret = __comm_mgr_srv_forward_data(srv_msg); // Forward the original received message
     }
     return ret;
@@ -843,6 +847,37 @@ static COMM_MGR_SRV_PROTO_TBL* __comm_mgr_srv_protocol_uid_map_insert(uint16_t u
                                         uid, fd, __comm_mgr_srv_is_uid_static(uid) ? "Static":"Dynamic");
 
     return proto_entry;
+}
+
+/*
+    This function removes an UID from the UID map
+
+    It cleans up only the uid_ptr in the map. The entry for that UID in the
+    UID Map remains always along with the interest table.
+*/
+static COMM_MGR_SRV_ERR __comm_mgr_srv_protocol_uid_map_remove(uint16_t uid) {
+    
+    COMM_MGR_SRV_PROTO_TBL *proto_tbl = __comm_mgr_srv_protocol_uid_map_get(uid);
+
+    if (proto_tbl == NULL) {
+        COMM_MGR_SRV_ERROR("Unable to find the UID [%d] in the protocol table", uid);
+        return COMM_MGR_SRV_PROTO_ERR;
+    }
+
+    if(proto_tbl->property) {
+        free(proto_tbl->property);
+    }   
+
+    free(proto_tbl);
+
+    // Delete the entry from the UID map
+    if(__comm_mgr_srv_is_uid_static(uid)) {
+        comm_mgr_srv_protocol_static_uid_tbl[uid]->uid_ptr = NULL;
+    } else {
+        comm_mgr_srv_protocol_dynamic_uid_tbl[uid]->uid_ptr = NULL;
+    }
+
+    return COMM_MGR_SRV_SUCCESS;
 }
 
 /*

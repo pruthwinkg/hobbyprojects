@@ -510,7 +510,7 @@ cleanup_and_exit:
 *************************************************************************/
 COMM_MGR_SRV_ERR comm_mgr_srv_send_data(COMM_MGR_SRV_MASTER *master, 
                                         COMM_MGR_SRV_MSG *srv_msg) {
-    int rc = 0;                                        
+    int rc = 0;
     if ((srv_msg == NULL) || (master == NULL) || (srv_msg->msg == NULL)) {
         COMM_MGR_SRV_ERROR("Received invalid argument");
         return COMM_MGR_SRV_INVALID_ARG;

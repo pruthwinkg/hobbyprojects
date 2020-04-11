@@ -16,8 +16,8 @@
 #define TEST_COMM_MGR_LIB
 #define TEST_UNIX_AF
 
-#define TEST_COMM_MGR_LIB_SRC_UID   (1022) // Static UID
-#define TEST_COMM_MGR_LIB_DST_UID   (1023) // Static UID
+#define TEST_COMM_MGR_LIB_SRC_UID   (1023) // Static UID
+#define TEST_COMM_MGR_LIB_DST_UID   (1022) // Static UID
 
 boolean comm_mgr_test_app_communication_on = FALSE;
 
@@ -34,8 +34,7 @@ int main() {
     int len = 0;
 
     comm_mgr_lib_init(LOG_LVL_DEBUG, TEST_COMM_MGR_LIB_SRC_UID, FALSE);
-    COMM_MGR_LIB_TRACE("Starting the test of %s for test-app-1\n", COMM_MGR_LIB_NAME);
-
+    COMM_MGR_LIB_TRACE("Starting the test of %s for test-app-2\n", COMM_MGR_LIB_NAME);    
 
 #ifdef TEST_UNIX_AF
     memset(&client, 0, sizeof(COMM_MGR_LIB_CLIENT));

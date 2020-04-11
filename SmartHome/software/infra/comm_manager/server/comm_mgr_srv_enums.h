@@ -63,6 +63,7 @@ BEGIN_ENUM(COMM_MGR_SRV_TASK_ID) {
     ADD_ENUM_STR(COMM_MGR_SRV_TASK_ID_UDS_PROCESS, "UDS process handler")
     ADD_ENUM_STR(COMM_MGR_SRV_TASK_ID_UDS_RES_STATIC_UID, "UDS Static UID response handler")
     ADD_ENUM_STR(COMM_MGR_SRV_TASK_ID_UDS_RES_DYNAMIC_UID, "UDS Dynamic UID response handler")
+    ADD_ENUM_STR(COMM_MGR_SRV_TASK_ID_UDS_HOUSEKEEPER, "UDS house keeper handler")
     ADD_ENUM(COMM_MGR_SRV_TASK_ID_MAX)
 } END_ENUM(COMM_MGR_SRV_TASK_ID);
 
@@ -72,8 +73,17 @@ BEGIN_ENUM(COMM_MGR_SRV_DSID) {
     ADD_ENUM_STR(COMM_MGR_SRV_DSID_RECV, "DSID for receiving the Data")
     ADD_ENUM_STR(COMM_MGR_SRV_DSID_PROTO, "DSID for Protocols")
     ADD_ENUM_STR(COMM_MGR_SRV_DSID_SEND, "DSID for sending the Data")
+    ADD_ENUM_STR(COMM_MGR_SRV_DSID_HOUSEKEEP, "DSID for Internal house keeping")
     ADD_ENUM(COMM_MGR_SRV_DSID_MAX) // Master instances can use private DSIDs outside this
 } END_ENUM(COMM_MGR_SRV_DSID);
+
+// These are default House keeping events. Any Custom events by the various server instances
+// should be outside this range
+BEGIN_ENUM(COMM_MGR_SRV_HOUSEKEEP_EVENT) {
+    ADD_ENUM_STR(COMM_MGR_SRV_HOUSEKEEP_EVENT_CLIENT_DOWN, "Client is going down")
+    ADD_ENUM_STR(COMM_MGR_SRV_HOUSEKEEP_EVENT_CLIENT_UP, "Client has come up")
+    ADD_ENUM(COMM_MGR_SRV_HOUSEKEEP_EVENT_MAX)
+} END_ENUM(COMM_MGR_SRV_HOUSEKEEP_EVENT);
 
 /********************************************************************************/
 /*                      Event functionality (using utils library)               */
@@ -85,6 +95,7 @@ BEGIN_ENUM(COMM_MGR_SRV_LOCAL_EVENT) {
     ADD_ENUM_STR(COMM_MGR_SRV_LOCAL_EVENT_RECV_READY, "Data Received from clients")
     ADD_ENUM_STR(COMM_MGR_SRV_LOCAL_EVENT_PROTO_SEND, "Send Protocol packets to clients")
     ADD_ENUM_STR(COMM_MGR_SRV_LOCAL_EVENT_DATA_SEND, "Send Data packets to clients")
+    ADD_ENUM_STR(COMM_MGR_SRV_LOCAL_EVENT_HOUSEKEEP, "Internal house keeping event")
     ADD_ENUM(COMM_MGR_SRV_LOCAL_EVENT_MAX)
 } END_ENUM(COMM_MGR_SRV_LOCAL_EVENT);
 

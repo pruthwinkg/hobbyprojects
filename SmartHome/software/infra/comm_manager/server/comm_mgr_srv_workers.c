@@ -65,5 +65,19 @@ UTILS_TASK_HANDLER comm_mgr_srv_workers[] =
         .eventEnable = TRUE,
         .reg_event_cb = comm_mgr_srv_uds_response_dynamic_register_events,
     },
+    /* 
+        Description : This task is dedicated to handle all the internal housekeeping jobs. 
+
+        Default UDS Master Instance task 
+    */
+    {
+        .taskID = COMM_MGR_SRV_TASK_ID_UDS_HOUSEKEEPER,
+        .handler = comm_mgr_srv_uds_housekeeping_handler,
+        .attr = NULL,
+        .arg = NULL,
+        .eventEnable = TRUE,
+        .reg_event_cb = comm_mgr_srv_uds_housekeeping_register_events,
+    },
+   
 };
 
