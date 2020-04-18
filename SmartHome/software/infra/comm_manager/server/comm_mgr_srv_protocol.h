@@ -86,6 +86,7 @@ static boolean __comm_mgr_srv_is_uid_valid(uint16_t uid);
 static boolean __comm_mgr_srv_is_uid_static(uint16_t uid);
 static COMM_MGR_SRV_PROTO_TBL* __comm_mgr_srv_protocol_uid_map_get(uint16_t uid);
 static COMM_MGR_SRV_PROTO_TBL* __comm_mgr_srv_protocol_uid_map_insert(uint16_t uid, uint32_t fd);
+static COMM_MGR_SRV_ERR __comm_mgr_srv_protocol_uid_map_remove(uint16_t uid);
 
 static COMM_MGR_SRV_MASTER* __comm_mgr_srv_protocol_get_master(void);
 static COMM_MGR_SRV_ERR __comm_mgr_srv_forward_data(COMM_MGR_SRV_MSG *srv_msg);
@@ -97,6 +98,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_protocol_init(void);
 COMM_MGR_SRV_ERR comm_mgr_srv_protocol_master_init(COMM_MGR_SRV_MASTER *master);
 COMM_MGR_SRV_ERR comm_mgr_srv_protocol_statemachine(COMM_MGR_PROTO_STATES state, uint16_t uid, COMM_MGR_SRV_MSG *srv_msg);
 COMM_MGR_SRV_ERR comm_mgr_srv_protocol_process_packet(COMM_MGR_SRV_MSG *msg);
+COMM_MGR_SRV_ERR comm_mgr_srv_protocol_client_event(uint8_t ev, void *arg);
 void comm_mgr_srv_msg_action(COMM_MGR_SRV_MSG *srv_msg);
 
 

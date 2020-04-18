@@ -233,6 +233,62 @@ COMM_MGR_SRV_ERR comm_mgr_srv_protocol_process_packet(COMM_MGR_SRV_MSG *srv_msg)
     return ret; 
 }
 
+/*
+    This function handles various events associated with a client
+*/
+COMM_MGR_SRV_ERR comm_mgr_srv_protocol_client_event(uint8_t ev, void *arg) {
+    COMM_MGR_SRV_ERR ret = COMM_MGR_SRV_SUCCESS;
+    switch(ev) {
+        case COMM_MGR_SRV_HOUSEKEEP_EVENT_CLIENT_DOWN:
+        {
+            if (arg == NULL) {
+                return COMM_MGR_SRV_INVALID_ARG;
+            }
+            uint32_t server_fd = *(uint32_t *)arg;
+            uint16_t uid;
+            COMM_MGR_SRV_PROTO_TBL *proto_tbl;
+            boolean found_fd = FALSE;
+            /*
+                Search the UID map which has this server_fd and then remove the client data
+                Currently the search mechasim is just a linear search. This is a very slow process.
+                Might need to optimize in future <TODO>
+            */
+            for (uint16_t i = comm_mgr_srv_static_uid_map_base; i < comm_mgr_srv_static_uid_map_max; i++) {
+                proto_tbl = __comm_mgr_srv_protocol_uid_map_get(i);
+                if((proto_tbl) && (proto_tbl->server_fd == server_fd)) {
+                    uid = proto_tbl->UID;
+                    found_fd = TRUE;
+                    break;
+                }
+            }
+
+            if(found_fd == FALSE) {
+                for (uint16_t i = comm_mgr_srv_dynamic_uid_map_base; i < comm_mgr_srv_dynamic_uid_map_max; i++) {
+                    proto_tbl = __comm_mgr_srv_protocol_uid_map_get(i);
+                    if((proto_tbl) && (proto_tbl->server_fd == server_fd)) {
+                        uid = proto_tbl->UID;
+                        found_fd = TRUE;
+                        break;
+                    }
+                }
+            }
+
+            if (found_fd == TRUE) {
+                COMM_MGR_SRV_DEBUG("Found the client with Server FD [%d], UID [%d], deleting from the protocol table",
+                                server_fd, uid);            
+                ret = __comm_mgr_srv_protocol_uid_map_remove(uid);
+            } else {
+                COMM_MGR_SRV_ERROR("Couldn't find the UID corresponding to the Server FD [%d]", server_fd);
+                return COMM_MGR_SRV_BAD_SERVER;
+            }
+        }   
+            break;
+        default:
+            return COMM_MGR_SRV_UNKNOWN_EVENT; 
+    }
+    return ret;
+}
+
 void comm_mgr_srv_msg_action(COMM_MGR_SRV_MSG *srv_msg) {
     if(srv_msg == NULL) {
         return;

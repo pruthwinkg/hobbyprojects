@@ -8,8 +8,9 @@
 #include "comm_mgr_srv.h"
 #include "comm_mgr_srv_protocol.h"
 
-#define UDS_MASTER_RECV_QUEUE_SIZE      (5)
-#define UDS_MASTER_SEND_QUEUE_SIZE      (5)
+#define UDS_MASTER_RECV_QUEUE_SIZE          (5)
+#define UDS_MASTER_SEND_QUEUE_SIZE          (5)
+#define UDS_MASTER_HOUSEKEEP_QUEUE_SIZE     (5)
 #define UDS_MASTER_MSG_MAGIC_NUM        (0x2468)
 
 // Actions on UDS messages
@@ -54,19 +55,25 @@ typedef struct {
                                Public Functions
 *****************************************************************************/
 COMM_MGR_SRV_ERR comm_mgr_srv_create_uds_master(uint16_t *masterID, COMM_MGR_SRV_MASTER_INSTANCE instance);
+
 void* comm_mgr_srv_uds_process_handler(void *arg);
 void* comm_mgr_srv_uds_request_handler(void *arg);
 void* comm_mgr_srv_uds_response_static_handler(void *arg);
 void* comm_mgr_srv_uds_response_dynamic_handler(void *arg);
+void* comm_mgr_srv_uds_housekeeping_handler(void *arg);
+
 COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_recv_data(UTILS_DS_ID id, char *data, uint32_t len, void *arg);
 COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_proto_data(UTILS_DS_ID id, char *data, uint32_t len, void *arg);
 COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_send_data(UTILS_DS_ID id, char *data, uint32_t len, void *arg);
+COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_housekeeper(UTILS_DS_ID id, char *data, uint32_t len, void *arg);
+
 COMM_MGR_SRV_ERR comm_mgr_srv_uds_process_events(uint16_t masterID, boolean isLocalMode, uint32_t event);
+COMM_MGR_SRV_ERR comm_mgr_srv_uds_handle_housekeeping_events(COMM_MGR_SRV_MASTER *master);
 
 void comm_mgr_srv_uds_process_register_events(uint32_t taskID);
 void comm_mgr_srv_uds_response_static_register_events(uint32_t taskID);
 void comm_mgr_srv_uds_response_dynamic_register_events(uint32_t taskID);
-
+void comm_mgr_srv_uds_housekeeping_register_events(uint32_t taskID);
 
 /*****************************************************************************
                                 Internal Functions

@@ -434,6 +434,18 @@ COMM_MGR_SRV_ERR comm_mgr_srv_accept_clients(uint16_t masterID) {
 						if (rc == 0) {
 							COMM_MGR_SRV_TRACE("Connection closed");
 							close_conn = TRUE;
+                            
+                            // Add this event to the HouseKeeping DSID
+                            if (master->__dsid_cb[COMM_MGR_SRV_DSID_HOUSEKEEP]) {
+                                COMM_MGR_SRV_UDS_HK_JOB *hk_job = (COMM_MGR_SRV_UDS_HK_JOB*)malloc(sizeof(COMM_MGR_SRV_UDS_HK_JOB));
+                                hk_job->event = COMM_MGR_SRV_HOUSEKEEP_EVENT_CLIENT_DOWN;
+                                hk_job->eventData = (uint32_t *)malloc(sizeof(uint32_t));
+                                *(uint32_t *)(hk_job->eventData) = i; // copy the server fd
+                                master->__dsid_cb[COMM_MGR_SRV_DSID_HOUSEKEEP](master->__DSID[COMM_MGR_SRV_DSID_HOUSEKEEP], NULL, 0, (void *)hk_job);
+                            } else {
+                                COMM_MGR_SRV_ERROR("DSID [%s] Callback not set. Not sending the data to Master ID %d", 
+                                                    DECODE_ENUM(COMM_MGR_SRV_DSID, COMM_MGR_SRV_DSID_HOUSEKEEP), master->__masterID);
+                            }
 							break;
 						}
 

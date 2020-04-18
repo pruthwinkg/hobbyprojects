@@ -198,7 +198,7 @@ void comm_mgr_print_msg_hdr(COMM_MGR_MSG *msg, char *buf, uint16_t len) {
     snprintf(buf + strlen(buf), len, "\t Priority                 : 0x%0x\n", msg->hdr.priority);
     snprintf(buf + strlen(buf), len, "\t ACK Required             : 0x%0x\n", msg->hdr.ack_required);
     snprintf(buf + strlen(buf), len, "\t Msg backing time(mins)   : 0x%0x\n", msg->hdr.msg_backing_time);
-    snprintf(buf + strlen(buf), len, "\t Payload Size             : 0x%0x\n", msg->hdr.ack_required);
+    snprintf(buf + strlen(buf), len, "\t Payload Size             : 0x%0x\n", msg->hdr.payloadSize);
     
 }
 

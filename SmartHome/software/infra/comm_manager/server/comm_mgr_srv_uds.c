@@ -46,6 +46,16 @@ COMM_MGR_SRV_ERR comm_mgr_srv_create_uds_master(uint16_t *masterID, COMM_MGR_SRV
         return COMM_MGR_SRV_UDS_MASTER_INIT_ERR;
     }
 
+    // Create a Circular Queue for storing the data to be sent to clients
+    queue.type = UTILS_QUEUE_CIRCULAR;
+    queue.size = UDS_MASTER_SEND_QUEUE_SIZE;
+    queue.isPriority = FALSE;
+    uds_master.__DSID[COMM_MGR_SRV_DSID_HOUSEKEEP] = utils_ds_queue_create(&queue);
+    if (uds_master.__DSID[COMM_MGR_SRV_DSID_HOUSEKEEP] == 0) {
+        COMM_MGR_SRV_ERROR("Failed to create a UDS master instance");
+        return COMM_MGR_SRV_UDS_MASTER_INIT_ERR;
+    }
+
     uds_master.__dsid_cb[COMM_MGR_SRV_DSID_RECV] = comm_mgr_srv_uds_master_recv_data;
     uds_master.__dsid_cb[COMM_MGR_SRV_DSID_PROTO] = comm_mgr_srv_uds_master_proto_data;
     uds_master.__dsid_cb[COMM_MGR_SRV_DSID_SEND] = comm_mgr_srv_uds_master_send_data;
@@ -69,6 +79,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_create_uds_master(uint16_t *masterID, COMM_MGR_SRV
             comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_UDS_PROCESS].arg = (void *)g_masterID;
             comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_UDS_RES_STATIC_UID].arg = (void *)g_masterID;
             comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_UDS_RES_DYNAMIC_UID].arg = (void *)g_masterID;
+            comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_UDS_HOUSEKEEPER].arg = (void *)g_masterID;
             break;
         default:
             COMM_MGR_SRV_ERROR("Not yet supported");
@@ -231,6 +242,11 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_recv_data(UTILS_DS_ID id,
                               // payload received
     uint32_t server_fd = *(uint32_t *)arg;
 
+    if (id == 0) {
+        COMM_MGR_SRV_ERROR("Invalid DSID");
+        return COMM_MGR_SRV_UTILS_DSID_ERR;
+    }
+
     // Check if there are multiple messages in this msg. But all those messages
     // are guranteed by the Comm Server Core to belong to server_fd
     COMM_MGR_MSG *comm_msg = (COMM_MGR_MSG*)data;
@@ -273,6 +289,11 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_proto_data(UTILS_DS_ID id,
         COMM_MGR_SRV_ERROR("Invalid argument. arg is NULL");
         return COMM_MGR_SRV_INVALID_ARG;
     }
+    if (id == 0) {
+        COMM_MGR_SRV_ERROR("Invalid DSID");
+        return COMM_MGR_SRV_UTILS_DSID_ERR;
+    }
+
     COMM_MGR_SRV_MSG *srv_msg = (COMM_MGR_SRV_MSG *)arg;
 
     // Enqueue the message to protocol queue after encoding in UDS format
@@ -311,6 +332,11 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_send_data(UTILS_DS_ID id,
         COMM_MGR_SRV_ERROR("Invalid argument. arg is NULL");
         return COMM_MGR_SRV_INVALID_ARG;
     }
+    if (id == 0) {
+        COMM_MGR_SRV_ERROR("Invalid DSID");
+        return COMM_MGR_SRV_UTILS_DSID_ERR;
+    }
+
     COMM_MGR_SRV_MSG *srv_msg = (COMM_MGR_SRV_MSG *)arg;
 
     COMM_MGR_SRV_DEBUG("Inserting data to DSID 0x%0x, len = %d", id, len);
@@ -340,6 +366,11 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_housekeeper(UTILS_DS_ID id,
     if (arg == NULL) {
         COMM_MGR_SRV_ERROR("Invalid argument. arg is NULL");
         return COMM_MGR_SRV_INVALID_ARG;
+    }
+
+    if (id == 0) {
+        COMM_MGR_SRV_ERROR("Invalid DSID");
+        return COMM_MGR_SRV_UTILS_DSID_ERR;
     }
 
     COMM_MGR_SRV_UDS_HK_JOB *hk_job = (COMM_MGR_SRV_UDS_HK_JOB *)arg;
@@ -508,16 +539,17 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_process_events(uint16_t masterID, boolean isLo
 
             break;
         case COMM_MGR_SRV_LOCAL_EVENT_HOUSEKEEP:
-            comm_mgr_srv_uds_handle_housekeeping_events();
+            ret = comm_mgr_srv_uds_handle_housekeeping_events(master);
             break;
         default:
             return COMM_MGR_SRV_UNKNOWN_EVENT;
     }
-    return COMM_MGR_SRV_SUCCESS;
+    return ret;
 }
 
-void comm_mgr_srv_uds_handle_housekeeping_events() {
+COMM_MGR_SRV_ERR comm_mgr_srv_uds_handle_housekeeping_events(COMM_MGR_SRV_MASTER *master) {
     boolean handle_housekeeping_event_loop = TRUE;
+    COMM_MGR_SRV_ERR ret = COMM_MGR_SRV_SUCCESS;
 
     while(handle_housekeeping_event_loop) {
     // Process all the house keeping events which are pending
@@ -525,10 +557,21 @@ void comm_mgr_srv_uds_handle_housekeeping_events() {
         if(hk_job == NULL) {
             break; // Queue is empty
         }
-
+        switch(hk_job->event) {
+            case COMM_MGR_SRV_HOUSEKEEP_EVENT_CLIENT_DOWN:
+                COMM_MGR_SRV_DEBUG("Received Hosekeeping event [%d] (%s)", 
+                            hk_job->event, DECODE_ENUM(COMM_MGR_SRV_HOUSEKEEP_EVENT, hk_job->event));
+                ret = comm_mgr_srv_protocol_client_event(hk_job->event, hk_job->eventData); 
+                break;
+            default:
+                COMM_MGR_SRV_ERROR("Unknown Housekeeping event [%d]", hk_job->event);
+                break;
+        }
     }
     COMM_MGR_SRV_DEBUG("Processed the DSID [0x%0x] completely for event %d", 
-                           master->__DSID[COMM_MGR_SRV_DSID_HOUSEKEEP], event);
+                           master->__DSID[COMM_MGR_SRV_DSID_HOUSEKEEP], COMM_MGR_SRV_LOCAL_EVENT_HOUSEKEEP);
+
+    return ret;
 }
 
 // This will be called by the utils_task_handler lib to generate
@@ -552,6 +595,10 @@ void comm_mgr_srv_uds_response_dynamic_register_events(uint32_t taskID) {
     utils_task_handlers_register_event(COMM_MGR_SRV_LOCAL_EVENT_DATA_SEND, taskID);    
 }
 
+void comm_mgr_srv_uds_housekeeping_register_events(uint32_t taskID) {
+
+    utils_task_handlers_register_event(COMM_MGR_SRV_LOCAL_EVENT_HOUSEKEEP, taskID);    
+}
 
 /*******************************************************************************/
 /*              Internal functions                                             */

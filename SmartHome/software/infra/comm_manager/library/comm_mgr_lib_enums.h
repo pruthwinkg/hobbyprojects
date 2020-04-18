@@ -55,6 +55,9 @@ BEGIN_ENUM(COMM_MGR_LIB_DSID) {
     ADD_ENUM(COMM_MGR_LIB_DSID_MAX)
 } END_ENUM(COMM_MGR_LIB_DSID);
 
-
-
+// These are various events associated with the library. Apps can depend on them
+BEGIN_ENUM(COMM_MGR_LIB_EVENT) {
+    ADD_ENUM_STR(COMM_MGR_LIB_EVENT_RECV_READY, "Data Received from Server")
+    ADD_ENUM(COMM_MGR_LIB_EVENT_MAX)
+} END_ENUM(COMM_MGR_LIB_EVENT);
 

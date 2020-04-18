@@ -41,6 +41,13 @@
 // tyoecast to apprioate type for that DSID and use it.
 typedef COMM_MGR_LIB_ERR (*comm_mgr_lib_dsid_cb)(UTILS_DS_ID, char *, uint32_t, void *);
 
+
+/*
+    This is a application callback by the comm mgr library whenever there are some library
+    events
+*/
+typedef void (*comm_mgr_lib_app_cb)(COMM_MGR_LIB_EVENT);
+
 /*
     Use the COMM_MGR_LIB_CLIENT_ID to send/receive user data
     Format :               
@@ -64,6 +71,7 @@ typedef struct {
 } COMM_MGR_LIB_CLIENT_INTERNAL;
 
 typedef struct {
+    comm_mgr_lib_app_cb app_cb;
     uint16_t comm_mgr_lib_recv_queue_size;
     uint16_t comm_mgr_lib_send_queue_size;
     int libInactivityTimeOut; // In seconds
@@ -79,6 +87,46 @@ typedef struct {
     COMM_MGR_LIB_CLIENT_INTERNAL *client_ptr; /* For internal usage */
 } COMM_MGR_LIB_CLIENT;
 
+/*                      HOW TO USE THE LIBRARY TO GET DATA
+
+    Notes: There are various ways for an app using this library to get useful information
+    out of it.
+        - The app can optionally register for a callback from the library for events.
+        - The app can directly use some of the API provided by the library to get data/events
+        - The app can also poll for COMM_MGR_LIB_EVENT_FLAGS
+
+    The application has the liberty to mix & match above options available and build an custom
+    and efficient solution according to its own needs
+
+    Example : An app can register for a callback for events. This happens in the context of
+    library thread. In the callback it can additionally consult COMM_MGR_LIB_EVENT_FLAGS for richer
+    events. Then it can use the utils library event mechanism to send app-specific events to other
+    threads OR set some app-specific flags/data. Also the other task handlers upon receving the 
+    app-specific events, use some of the library APIs to extract information
+*/
+
+/*
+    This struture can be used by the Apps which is using the Communication Library
+    for getting various events.
+
+    The apps can build a Custom sophesticated event mechasims around this structure
+    as well or simply it can even keep polling these flags periodically
+
+    Note: This strcuture is referenced by using "cid" (Client ID)
+
+    Also note that, there can be race conditions due to which the flags below might
+    not be correct at the time of read if read by a different thread.
+*/
+#define COMM_MGR_LIB_RECV_STATUS_PENDING        (1 << 0)
+#define COMM_MGR_LIB_RECV_STATUS_FULL           (1 << 1)
+
+typedef struct {
+    uint8_t comm_mgr_lib_data_recv_status;     // Various status regarding RECV DSID
+    uint8_t comm_mgr_lib_generic_status;       // Library generic status
+    uint8_t comm_mgr_lib_error_status;         // Library error status
+} COMM_MGR_LIB_EVENT_FLAGS;
+
+COMM_MGR_LIB_EVENT_FLAGS comm_mgr_lib_events[COMM_MGR_LIB_MAX_CLIENTS];
 
 /******************************************************************************/
 /*          Public Functions                                                  */
@@ -88,7 +136,7 @@ COMM_MGR_LIB_ERR comm_mgr_lib_destroy(void);
 COMM_MGR_LIB_CLIENT_ID comm_mgr_lib_create_client(COMM_MGR_LIB_CLIENT *client);
 COMM_MGR_LIB_ERR comm_mgr_lib_delete_client(COMM_MGR_LIB_CLIENT_ID id);
 COMM_MGR_LIB_ERR comm_mgr_lib_server_communicator(COMM_MGR_LIB_CLIENT_ID id);
-int comm_mgr_lib_recv_data(COMM_MGR_LIB_CLIENT_ID id, char *msg, int len);
+COMM_MGR_MSG* comm_mgr_lib_recv_data(COMM_MGR_LIB_CLIENT_ID id);
 COMM_MGR_LIB_ERR comm_mgr_lib_send_data(COMM_MGR_LIB_CLIENT_ID id, uint16_t dst_uid, 
                                         char *msg, int len);
 COMM_MGR_LIB_ERR comm_mgr_lib_send_ack(COMM_MGR_LIB_CLIENT_ID id, uint16_t dst_uid, COMM_MGR_SUBMSG_TYPE submsg);                                        

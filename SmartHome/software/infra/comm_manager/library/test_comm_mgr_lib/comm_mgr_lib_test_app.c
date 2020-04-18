@@ -55,6 +55,7 @@ int main() {
     /* Create task handlers for this test app */	
     comm_mgr_test_app_workers[COMM_MGR_TEST_APP_TASK_ID_COMM].arg = (void *)cid;
     comm_mgr_test_app_workers[COMM_MGR_TEST_APP_TASK_ID_HOUSEKEEPER].arg = (void *)cid;
+    comm_mgr_test_app_workers[COMM_MGR_TEST_APP_TASK_ID_DATA_RECEIVER].arg = (void *)cid;
     
 	if(utils_task_handlers_create(COMM_MGR_TEST_APP_TASK_ID_MAX, comm_mgr_test_app_workers, 
                                 0, 0) < 0) {
@@ -152,30 +153,59 @@ void *comm_mgr_test_app_housekeeper(void *arg) {
             COMM_MGR_LIB_ERROR("Failed to send the data : %s", buf);
         }
         memset(buf, 0, sizeof(buf));
-#if 0
-       len = comm_mgr_lib_recv_data(cid, recv_buf, sizeof(recv_buf));
-       if(len < 0) {
-            COMM_MGR_LIB_ERROR("Failed to recv the data : %s", recv_buf);
-            continue;
-       }
 
-       comm_msg = comm_mgr_get_msg(recv_buf, len);
+        comm_msg = comm_mgr_lib_recv_data(cid);
        
-       if (comm_msg == NULL) {
-            COMM_MGR_LIB_ERROR("Received invalid data from Communication Manager");
+        if (comm_msg == NULL) {
+            COMM_MGR_LIB_ERROR("No data available from Communication Manager library");
             continue;
-       }
+        }
 
-       COMM_MGR_LIB_TRACE("Data received [%d]: msg_type [%d], submsg_type [%d], src_uid [%d], dst_uid [%d]", 
-                                                    len, comm_msg->hdr.msg_type, comm_msg->hdr.submsg_type, 
+        COMM_MGR_LIB_TRACE("Data received [%d]: msg_type [%d], submsg_type [%d], src_uid [%d], dst_uid [%d]", 
+                                                    comm_msg->hdr.payloadSize, comm_msg->hdr.msg_type, comm_msg->hdr.submsg_type, 
                                                     comm_msg->hdr.src_uid, comm_msg->hdr.dst_uid);
 
-       comm_mgr_print_msg_hdr(comm_msg, buf, sizeof(buf));
-       COMM_MGR_LIB_PRINT("%s", buf); 
+        comm_mgr_print_msg_hdr(comm_msg, buf, sizeof(buf));
+        COMM_MGR_LIB_PRINT("%s", buf); 
 
-#endif       
     }
  
+}
+
+void *comm_mgr_test_app_data_receiver(void *arg) {
+    if (arg == NULL) {
+        COMM_MGR_SRV_ERROR("Invalid Client ID");
+        return NULL;
+    }   
+    uint16_t cid = *(uint16_t *)arg;
+    COMM_MGR_LIB_TRACE("Test-app-1 ready to handle housekeeping tasks from Client ID %d", cid);
+  
+    // The process thread should signal the response thread to go and read from protocol Queue
+    boolean run_app_receiver_loop = TRUE;
+    uint16_t eventListSize = 5;
+    uint32_t eventList[eventListSize];
+    uint16_t eventsRead = 0;
+
+    while(run_app_receiver_loop) {
+       eventsRead = utils_task_handlers_get_events(eventList, eventListSize);
+       for (uint16_t i = 0; i < eventsRead; i++) {
+            if(UTILS_TASK_HANDLER_EVENT_IS_GLOBAL(eventList[i])) {
+                comm_mgr_lib_process_events(cid, FALSE, UTILS_TASK_HANDLER_EVENT_GET(eventList[i]));    
+            } else {
+                comm_mgr_lib_process_events(cid, TRUE, UTILS_TASK_HANDLER_EVENT_GET(eventList[i]));
+            }
+       }
+    }
+}
+
+COMM_MGR_LIB_ERR comm_mgr_lib_process_events(uint16_t cid, boolean isLocalMode, uint32_t event) {
+    COMM_MGR_SRV_LOCAL_EVENT ev = (COMM_MGR_SRV_LOCAL_EVENT)event;
+
+
+}
+
+void comm_mgr_test_app_register_receiver_events(uint32_t taskID) {
+    utils_task_handlers_register_event(COMM_MGR_SRV_LOCAL_EVENT_DATA_RECV, taskID);
 }
 
 #endif /* TEST_COMM_MGR_LIB */

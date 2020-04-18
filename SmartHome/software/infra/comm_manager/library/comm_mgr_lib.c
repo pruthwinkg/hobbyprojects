@@ -362,32 +362,36 @@ COMM_MGR_LIB_ERR comm_mgr_lib_send_ack(COMM_MGR_LIB_CLIENT_ID id, uint16_t dst_u
     return ret;
 }
 
-int comm_mgr_lib_recv_data(COMM_MGR_LIB_CLIENT_ID id, char *msg, int len) {
+/*
+    This function is used to retrieve the data which has been received by the
+    Communication Manager library
+
+    This function will read the data from COMM_MGR_LIB_DSID_DATA_RECV
+
+    The application should keep calling this function to get the data depending
+    on COMM_MGR_LIB_EVENT_FLAGS
+*/
+COMM_MGR_MSG* comm_mgr_lib_recv_data(COMM_MGR_LIB_CLIENT_ID id) {
     uint8_t cid = COMM_MGR_LIB_GET_CLIENT_ID(id);
 
-    if((msg == NULL) || (len == 0)) {
-        COMM_MGR_LIB_ERROR("Input arguments are wrong");
-        return COMM_MGR_LIB_INVALID_ARG;
-    }
     if(id > COMM_MGR_LIB_MAX_CLIENTS) {
         COMM_MGR_LIB_ERROR("Invalid client");
-        return COMM_MGR_LIB_INVALID_CLIENT_ERR;
+        return NULL;
     }
     if(__comm_mgr_lib_clients[cid].client_ptr == NULL) {
         COMM_MGR_LIB_ERROR("Invalid client");
-        return COMM_MGR_LIB_INVALID_CLIENT_ERR;
+        return NULL;
     }
 
-    struct hostent *server = &(__comm_mgr_lib_clients[cid].server);
-    ssize_t out_len = 0;
+    UTILS_DS_ID dsid = __comm_mgr_lib_clients[cid].client_ptr->__DSID[COMM_MGR_LIB_DSID_DATA_RECV];
+    COMM_MGR_MSG *comm_mgr_msg = (COMM_MGR_MSG *)utils_ds_queue_dequeue(dsid);
+    COMM_MGR_LIB_DEBUG("Received the message %s", comm_mgr_msg->payload);
 
-    out_len = recv(__comm_mgr_lib_clients[cid].client_ptr->__fd, msg, len, 0);
-    if (out_len < 0) {
-        COMM_MGR_LIB_ERROR("Receive error\n");
-        return -1;        
+    if(comm_mgr_msg == NULL) { // No more data is available
+        comm_mgr_lib_events[cid].comm_mgr_lib_data_recv_status &= ~COMM_MGR_LIB_RECV_STATUS_PENDING;
     }
 
-    return out_len;
+    return comm_mgr_msg;
 }
 
 /******************************************************************************
@@ -632,12 +636,33 @@ static COMM_MGR_LIB_ERR __comm_mgr_lib_ack_handler(COMM_MGR_LIB_CLIENT *client, 
     COMM_MGR_LIB_DSID_DATA_RECV will be used to enqueue the Data Packets. The applications need
     to either poll for this DSID or setup an event and get notification from the library as well.
 
+    To poll keep calling comm_mgr_lib_recv_data()
+
     The event notification mechanism is recommended. To get notification, enable the events on the
     comunication task and register for default data event provided by the comm library
 */
 static COMM_MGR_LIB_ERR __comm_mgr_lib_data_handler(COMM_MGR_LIB_CLIENT *client, COMM_MGR_MSG *msg) {
 
-    COMM_MGR_LIB_DEBUG("Received the message %s", msg->payload);
+    if (client == NULL) {
+        COMM_MGR_LIB_ERROR("Invalid client");
+        return COMM_MGR_LIB_INVALID_CLIENT_ERR; 
+    }
+
+    if(msg == NULL) {
+        COMM_MGR_LIB_ERROR("Invalid data received. Discarding");
+        return COMM_MGR_LIB_BAD_PACKET;
+    }
+
+    UTILS_DS_ID dsid = client->client_ptr->__DSID[COMM_MGR_LIB_DSID_DATA_RECV];
+
+    if(utils_ds_queue_enqueue(dsid, (void *)msg) < 0) {
+        COMM_MGR_LIB_ERROR("Failed to insert the data to DSID 0x%0x", dsid);
+        return COMM_MGR_LIB_UTILS_DSID_ERR;
+    }
+
+    uint8_t cid = COMM_MGR_LIB_GET_CLIENT_ID(client->__clientID);
+    // Indicate that some data is available
+    comm_mgr_lib_events[cid].comm_mgr_lib_data_recv_status |= COMM_MGR_LIB_RECV_STATUS_PENDING;
 
     return COMM_MGR_LIB_SUCCESS;
 }
