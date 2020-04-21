@@ -93,7 +93,7 @@ typedef struct {
     out of it.
         - The app can optionally register for a callback from the library for events.
         - The app can directly use some of the API provided by the library to get data/events
-        - The app can also poll for COMM_MGR_LIB_EVENT_FLAGS
+        - The app can also poll for COMM_MGR_LIB_STATUS
 
     The application has the liberty to mix & match above options available and build an custom
     and efficient solution according to its own needs
@@ -103,11 +103,13 @@ typedef struct {
     events. Then it can use the utils library event mechanism to send app-specific events to other
     threads OR set some app-specific flags/data. Also the other task handlers upon receving the 
     app-specific events, use some of the library APIs to extract information
+
 */
 
 /*
     This struture can be used by the Apps which is using the Communication Library
-    for getting various events.
+    for getting various events. It is read-only by apps. The library does all the job
+    of settting/clearing the flags
 
     The apps can build a Custom sophesticated event mechasims around this structure
     as well or simply it can even keep polling these flags periodically
@@ -124,9 +126,10 @@ typedef struct {
     uint8_t comm_mgr_lib_data_recv_status;     // Various status regarding RECV DSID
     uint8_t comm_mgr_lib_generic_status;       // Library generic status
     uint8_t comm_mgr_lib_error_status;         // Library error status
-} COMM_MGR_LIB_EVENT_FLAGS;
+} COMM_MGR_LIB_STATUS;
 
-COMM_MGR_LIB_EVENT_FLAGS comm_mgr_lib_events[COMM_MGR_LIB_MAX_CLIENTS];
+// Read-only copy used the by apps
+const COMM_MGR_LIB_STATUS comm_mgr_lib_status_ro[COMM_MGR_LIB_MAX_CLIENTS];
 
 /******************************************************************************/
 /*          Public Functions                                                  */

@@ -38,6 +38,8 @@ static boolean comm_mgr_lib_epoll_en = FALSE;
 
 boolean comm_mgr_lib_initialized = FALSE;
 
+static COMM_MGR_LIB_STATUS *__comm_mgr_lib_events_rw; // Internal Read-Write copy of the library
+
 COMM_MGR_LIB_ERR comm_mgr_lib_init(LOG_LEVEL level, uint16_t src_uid, boolean epoll_en) {
     log_lib_init(NULL, level);
     utils_ds_init(); // Initialize utils data structure library
@@ -48,6 +50,11 @@ COMM_MGR_LIB_ERR comm_mgr_lib_init(LOG_LEVEL level, uint16_t src_uid, boolean ep
     comm_mgr_lib_src_uid = src_uid;
     comm_mgr_lib_initialized = TRUE;
     comm_mgr_lib_epoll_en = epoll_en;
+
+    __comm_mgr_lib_events_rw = &comm_mgr_lib_events_ro[0]; 
+    for (uint16_t i = 0; i < COMM_MGR_LIB_MAX_CLIENTS; i++) {
+        memset(&__comm_mgr_lib_events_rw[i], 0, sizeof(COMM_MGR_LIB_STATUS));
+    }
 
     return COMM_MGR_LIB_SUCCESS; 
 }
@@ -387,11 +394,31 @@ COMM_MGR_MSG* comm_mgr_lib_recv_data(COMM_MGR_LIB_CLIENT_ID id) {
     COMM_MGR_MSG *comm_mgr_msg = (COMM_MGR_MSG *)utils_ds_queue_dequeue(dsid);
     COMM_MGR_LIB_DEBUG("Received the message %s", comm_mgr_msg->payload);
 
-    if(comm_mgr_msg == NULL) { // No more data is available
-        comm_mgr_lib_events[cid].comm_mgr_lib_data_recv_status &= ~COMM_MGR_LIB_RECV_STATUS_PENDING;
-    }
-
     return comm_mgr_msg;
+}
+
+/*
+    This function get the status of various groups related to the library
+
+    <TODO> Might need to implement the Multiple Reader - Single Writer lock with Writer priority
+*/
+uint8_t comm_mgr_lib_get_status(uint8_t cid, COMM_MGR_LIB_STATUS_GRP grp) {
+    uint8_t status = 0;
+
+    switch(grp) {
+        case COMM_MGR_LIB_STATUS_GRP_DATA: // Data grp is a bitmap. It can hold multiple values
+            status = __comm_mgr_lib_events_rw[cid].comm_mgr_lib_data_recv_status;            
+            break;
+        case COMM_MGR_LIB_STATUS_GRP_GENERIC:
+
+            break;
+        case COMM_MGR_LIB_STATUS_GRP_ERROR:
+
+            break;
+        default:
+            return 0xFF;
+    }
+    return status;
 }
 
 /******************************************************************************
@@ -662,7 +689,7 @@ static COMM_MGR_LIB_ERR __comm_mgr_lib_data_handler(COMM_MGR_LIB_CLIENT *client,
 
     uint8_t cid = COMM_MGR_LIB_GET_CLIENT_ID(client->__clientID);
     // Indicate that some data is available
-    comm_mgr_lib_events[cid].comm_mgr_lib_data_recv_status |= COMM_MGR_LIB_RECV_STATUS_PENDING;
+    __comm_mgr_lib_update_status(cid, COMM_MGR_LIB_STATUS_GRP_DATA, COMM_MGR_LIB_RECV_STATUS_PENDING, TRUE);
 
     return COMM_MGR_LIB_SUCCESS;
 }
@@ -1034,14 +1061,14 @@ static COMM_MGR_LIB_ERR __comm_mgr_lib_server_communicator_with_epoll(COMM_MGR_L
     for pros/cons of using this function
 */
 static COMM_MGR_LIB_ERR __comm_mgr_lib_server_communicator_with_select(COMM_MGR_LIB_CLIENT_ID id) {
-	uint8_t cid = COMM_MGR_LIB_GET_CLIENT_ID(id);
+    uint8_t cid = COMM_MGR_LIB_GET_CLIENT_ID(id);
     fd_set  *working_read_fd;
     fd_set  *working_write_fd;
-	struct timeval	timeout;
-	int max_sd, rc = 0;
-	boolean end_lib = FALSE;
-	char recv_buffer[8096];
-	int recv_count = 0, send_count = 0;
+    struct timeval  timeout;
+    int max_sd, rc = 0;
+    boolean end_lib = FALSE;
+    char recv_buffer[8096];
+    int recv_count = 0, send_count = 0;
     COMM_MGR_MSG *msg;
     uint32_t comm_msg_size = 0;
     uint32_t default_select_timeout = COMM_MGR_LIB_DEFAULT_SELECT_TIMEOUT;
@@ -1052,17 +1079,17 @@ static COMM_MGR_LIB_ERR __comm_mgr_lib_server_communicator_with_select(COMM_MGR_
         return COMM_MGR_LIB_INVALID_CLIENT_ERR;
     }
 
-   	max_sd = __comm_mgr_lib_clients[cid].client_ptr->__fd;
+    max_sd = __comm_mgr_lib_clients[cid].client_ptr->__fd;
 
     working_read_fd = &(__comm_mgr_lib_clients[cid].client_ptr->__working_read_fd);
     working_write_fd = &(__comm_mgr_lib_clients[cid].client_ptr->__working_write_fd); 
 
 
-	// Note : Only one FD per client, where the activity has to be monitored
-	/*************************************************************/
-   	/*Loop waiting for for incoming data on the connected socket */
-   	/*************************************************************/
-	do {
+    // Note : Only one FD per client, where the activity has to be monitored
+    /*************************************************************/
+    /*Loop waiting for for incoming data on the connected socket */
+    /*************************************************************/
+    do {
         /*************************************************************/
         /* Initialize the timeval struct to libInactivityTimeOut 	 */
         /* minutes.  If no activity after libInactivityTimeOut 	 	 */
@@ -1071,66 +1098,66 @@ static COMM_MGR_LIB_ERR __comm_mgr_lib_server_communicator_with_select(COMM_MGR_
         timeout.tv_sec  = __comm_mgr_lib_clients[cid].property->libInactivityTimeOut;
         timeout.tv_usec = 0;
 
-	    FD_ZERO(working_read_fd);
-    	FD_ZERO(working_write_fd);
+        FD_ZERO(working_read_fd);
+        FD_ZERO(working_write_fd);
 
-    	/**********************************************************/
-      	/* Copy the master fd_set over to the working fd_set.     */
-      	/**********************************************************/
-		FD_SET(__comm_mgr_lib_clients[cid].client_ptr->__fd, working_read_fd);	
-	    
- 		// Set the write FD only when, there is something to send from SEND_DSID
+        /**********************************************************/
+        /* Copy the master fd_set over to the working fd_set.     */
+        /**********************************************************/
+        FD_SET(__comm_mgr_lib_clients[cid].client_ptr->__fd, working_read_fd);	
+            
+        // Set the write FD only when, there is something to send from SEND_DSID
         if((!utils_ds_queue_is_empty(__comm_mgr_lib_clients[cid].client_ptr->__DSID[COMM_MGR_LIB_DSID_PROTO_SEND])) ||
             (!utils_ds_queue_is_empty(__comm_mgr_lib_clients[cid].client_ptr->__DSID[COMM_MGR_LIB_DSID_DATA_SEND]))){
             COMM_MGR_LIB_DEBUG("Data is available on DSID");
-			FD_SET(__comm_mgr_lib_clients[cid].client_ptr->__fd, working_write_fd);	
-		}
+            FD_SET(__comm_mgr_lib_clients[cid].client_ptr->__fd, working_write_fd);	
+        }
 
-		/**********************************************************/
-      	/* Call select() and wait libInactivityTimeOut   	      */
-      	/**********************************************************/
+        /**********************************************************/
+        /* Call select() and wait libInactivityTimeOut   	      */
+        /**********************************************************/
         if((__comm_mgr_lib_clients[cid].property) && 
-        (__comm_mgr_lib_clients[cid].property->libInactivityTimeOut < 1)) { // Forever
+            (__comm_mgr_lib_clients[cid].property->libInactivityTimeOut < 1)) { // Forever
             rc = select(max_sd + 1, working_read_fd, working_write_fd, NULL, NULL);
         } else {
             rc = select(max_sd + 1, working_read_fd, working_write_fd, NULL, &timeout);
         }
-             	
-		/**********************************************************/
-      	/* Check to see if the select call failed.                */
-      	/**********************************************************/
-      	if (rc < 0) {
-        	COMM_MGR_LIB_ERROR("select() failed");
-			rc = COMM_MGR_LIB_SELECT_ERR;
-         	goto cleanup_and_exit;
-      	}
+                
+        /**********************************************************/
+        /* Check to see if the select call failed.                */
+        /**********************************************************/
+        if (rc < 0) {
+            COMM_MGR_LIB_ERROR("select() failed");
+            rc = COMM_MGR_LIB_SELECT_ERR;
+            goto cleanup_and_exit;
+        }
 
         // Control comes here when timeouts OR when a activity is found on the fds
 
-		// Now check if the client FD is set
-		if (FD_ISSET(__comm_mgr_lib_clients[cid].client_ptr->__fd, working_read_fd)) {
-			do {
-				recv_count = recv(__comm_mgr_lib_clients[cid].client_ptr->__fd, 
-												recv_buffer, sizeof(recv_buffer), MSG_DONTWAIT);
-				if (recv_count < 0) {
-					if (errno != EWOULDBLOCK) {
-						COMM_MGR_LIB_ERROR("recv() failed");
-						goto cleanup_and_exit;
-					}
-					break;
-				}
+        // Now check if the client FD is set
+        if (FD_ISSET(__comm_mgr_lib_clients[cid].client_ptr->__fd, working_read_fd)) {
+            do {
+                recv_count = recv(__comm_mgr_lib_clients[cid].client_ptr->__fd, 
+                                                            recv_buffer, sizeof(recv_buffer), MSG_DONTWAIT);
+                if (recv_count < 0) {
+                    if (errno != EWOULDBLOCK) {
+                            COMM_MGR_LIB_ERROR("recv() failed");
+                            goto cleanup_and_exit;
+                    }
+                    break;
+                }
                 if(recv_count == 0) {
                     COMM_MGR_LIB_ERROR("The Communication Manager Server has shutdown. Exiting");
                     goto cleanup_and_exit;
                 }
-				// Enqueue the received data to proto/data DSID. 
-				__comm_mgr_lib_receive_packets(id, recv_buffer, recv_count);
-			} while(recv_count > 0);	
-		}
+                // Enqueue the received data to proto/data DSID. 
+                __comm_mgr_lib_receive_packets(id, recv_buffer, recv_count);
+            } while(recv_count > 0);	
+        }
 
-		// Check if the FD is writable
-		if (FD_ISSET(__comm_mgr_lib_clients[cid].client_ptr->__fd , working_write_fd)) {			
-			do {
+        // Check if the FD is writable
+        if (FD_ISSET(__comm_mgr_lib_clients[cid].client_ptr->__fd , working_write_fd)) {
+            do {
                 // Check the send DSID if something is available to be sent. But priotize PROTO packets
                 if(!utils_ds_queue_is_empty(__comm_mgr_lib_clients[cid].client_ptr->__DSID[COMM_MGR_LIB_DSID_PROTO_SEND])) {
                      msg = (COMM_MGR_MSG *)utils_ds_queue_dequeue( \
@@ -1171,19 +1198,50 @@ static COMM_MGR_LIB_ERR __comm_mgr_lib_server_communicator_with_select(COMM_MGR_
                     COMM_MGR_LIB_DEBUG("Sent the message, type [%d], subtype [%d], size [%d] to Communication Manager successfully",
                                             msg->hdr.msg_type, msg->hdr.submsg_type, comm_msg_size);
                 }
-			} while(send_count > 0);
-		}
-		
-	} while(end_lib == FALSE);
+            } while(send_count > 0);
+        }
+
+        if(utils_ds_queue_is_empty(__comm_mgr_lib_clients[cid].client_ptr->__DSID[COMM_MGR_LIB_DSID_DATA_RECV])) {
+            __comm_mgr_lib_update_status(cid, COMM_MGR_LIB_STATUS_GRP_DATA, COMM_MGR_LIB_RECV_STATUS_PENDING, FALSE);
+        }
+        
+    } while(end_lib == FALSE);
 
 cleanup_and_exit:
-   	/*************************************************************/
-   	/* Clean up the socket which is open                         */
-   	/*************************************************************/
-	close(__comm_mgr_lib_clients[cid].client_ptr->__fd);
-	
-	return rc;
+    /*************************************************************/
+    /* Clean up the socket which is open                         */
+    /*************************************************************/
+    close(__comm_mgr_lib_clients[cid].client_ptr->__fd);
+    
+    return rc;
 }
 
+/*
+    This function updates various status flags related to the Communication Manager library.
 
+    <TODO> Implement Single Writer-Multiple Reader with Writer Priority
+
+*/
+static COMM_MGR_LIB_ERR __comm_mgr_lib_update_status(uint8_t cid, COMM_MGR_LIB_STATUS_GRP grp, uint8_t status, boolean set) {
+
+    switch(grp) {
+        case COMM_MGR_LIB_STATUS_GRP_DATA: // Data grp is a bitmap. It can hold multiple values
+            if(set) {
+                __comm_mgr_lib_events_rw[cid].comm_mgr_lib_data_recv_status |= status;
+            } else {
+                __comm_mgr_lib_events_rw[cid].comm_mgr_lib_data_recv_status &= ~status;
+            }
+            
+            break;
+        case COMM_MGR_LIB_STATUS_GRP_GENERIC:
+
+            break;
+        case COMM_MGR_LIB_STATUS_GRP_ERROR:
+
+            break;
+        default:
+            return COMM_MGR_LIB_UNKNOWN_STATUS_GRP;
+    }
+    return COMM_MGR_LIB_SUCCESS;
+}
 

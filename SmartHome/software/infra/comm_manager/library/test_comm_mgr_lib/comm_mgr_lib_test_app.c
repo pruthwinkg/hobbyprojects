@@ -174,7 +174,7 @@ void *comm_mgr_test_app_housekeeper(void *arg) {
 
 void *comm_mgr_test_app_data_receiver(void *arg) {
     if (arg == NULL) {
-        COMM_MGR_SRV_ERROR("Invalid Client ID");
+        COMM_MGR_LIB_ERROR("Invalid Client ID");
         return NULL;
     }   
     uint16_t cid = *(uint16_t *)arg;
