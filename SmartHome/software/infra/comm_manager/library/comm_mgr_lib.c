@@ -38,7 +38,8 @@ static boolean comm_mgr_lib_epoll_en = FALSE;
 
 boolean comm_mgr_lib_initialized = FALSE;
 
-static COMM_MGR_LIB_STATUS *__comm_mgr_lib_events_rw; // Internal Read-Write copy of the library
+static COMM_MGR_LIB_STATUS *__comm_mgr_lib_status_rw; // Internal Read-Write copy of the library
+const COMM_MGR_LIB_STATUS comm_mgr_lib_status_ro[COMM_MGR_LIB_MAX_CLIENTS];
 
 COMM_MGR_LIB_ERR comm_mgr_lib_init(LOG_LEVEL level, uint16_t src_uid, boolean epoll_en) {
     log_lib_init(NULL, level);
@@ -51,9 +52,9 @@ COMM_MGR_LIB_ERR comm_mgr_lib_init(LOG_LEVEL level, uint16_t src_uid, boolean ep
     comm_mgr_lib_initialized = TRUE;
     comm_mgr_lib_epoll_en = epoll_en;
 
-    __comm_mgr_lib_events_rw = &comm_mgr_lib_events_ro[0]; 
+    __comm_mgr_lib_status_rw = &comm_mgr_lib_status_ro[0]; 
     for (uint16_t i = 0; i < COMM_MGR_LIB_MAX_CLIENTS; i++) {
-        memset(&__comm_mgr_lib_events_rw[i], 0, sizeof(COMM_MGR_LIB_STATUS));
+        memset(&__comm_mgr_lib_status_rw[i], 0, sizeof(COMM_MGR_LIB_STATUS));
     }
 
     return COMM_MGR_LIB_SUCCESS; 
@@ -407,13 +408,13 @@ uint8_t comm_mgr_lib_get_status(uint8_t cid, COMM_MGR_LIB_STATUS_GRP grp) {
 
     switch(grp) {
         case COMM_MGR_LIB_STATUS_GRP_DATA: // Data grp is a bitmap. It can hold multiple values
-            status = __comm_mgr_lib_events_rw[cid].comm_mgr_lib_data_recv_status;            
+            status = comm_mgr_lib_status_ro[cid].comm_mgr_lib_data_recv_status;            
             break;
         case COMM_MGR_LIB_STATUS_GRP_GENERIC:
-
+            status = comm_mgr_lib_status_ro[cid].comm_mgr_lib_generic_status;
             break;
         case COMM_MGR_LIB_STATUS_GRP_ERROR:
-
+            status = comm_mgr_lib_status_ro[cid].comm_mgr_lib_error_status;
             break;
         default:
             return 0xFF;
@@ -689,7 +690,7 @@ static COMM_MGR_LIB_ERR __comm_mgr_lib_data_handler(COMM_MGR_LIB_CLIENT *client,
 
     uint8_t cid = COMM_MGR_LIB_GET_CLIENT_ID(client->__clientID);
     // Indicate that some data is available
-    __comm_mgr_lib_update_status(cid, COMM_MGR_LIB_STATUS_GRP_DATA, COMM_MGR_LIB_RECV_STATUS_PENDING, TRUE);
+    __comm_mgr_lib_update_status(cid, COMM_MGR_LIB_STATUS_GRP_DATA, COMM_MGR_LIB_DATA_STATUS_RECV_PENDING);
 
     return COMM_MGR_LIB_SUCCESS;
 }
@@ -1201,9 +1202,12 @@ static COMM_MGR_LIB_ERR __comm_mgr_lib_server_communicator_with_select(COMM_MGR_
             } while(send_count > 0);
         }
 
+        // Update the library status periodically
         if(utils_ds_queue_is_empty(__comm_mgr_lib_clients[cid].client_ptr->__DSID[COMM_MGR_LIB_DSID_DATA_RECV])) {
-            __comm_mgr_lib_update_status(cid, COMM_MGR_LIB_STATUS_GRP_DATA, COMM_MGR_LIB_RECV_STATUS_PENDING, FALSE);
-        }
+            __comm_mgr_lib_update_status(cid, COMM_MGR_LIB_STATUS_GRP_DATA, COMM_MGR_LIB_DATA_STATUS_EMPTY);
+        } else  if(utils_ds_queue_is_full(__comm_mgr_lib_clients[cid].client_ptr->__DSID[COMM_MGR_LIB_DSID_DATA_RECV])) {
+            __comm_mgr_lib_update_status(cid, COMM_MGR_LIB_STATUS_GRP_DATA, COMM_MGR_LIB_DATA_STATUS_FULL);
+        } 
         
     } while(end_lib == FALSE);
 
@@ -1222,22 +1226,17 @@ cleanup_and_exit:
     <TODO> Implement Single Writer-Multiple Reader with Writer Priority
 
 */
-static COMM_MGR_LIB_ERR __comm_mgr_lib_update_status(uint8_t cid, COMM_MGR_LIB_STATUS_GRP grp, uint8_t status, boolean set) {
+static COMM_MGR_LIB_ERR __comm_mgr_lib_update_status(uint8_t cid, COMM_MGR_LIB_STATUS_GRP grp, uint8_t status) {
 
     switch(grp) {
-        case COMM_MGR_LIB_STATUS_GRP_DATA: // Data grp is a bitmap. It can hold multiple values
-            if(set) {
-                __comm_mgr_lib_events_rw[cid].comm_mgr_lib_data_recv_status |= status;
-            } else {
-                __comm_mgr_lib_events_rw[cid].comm_mgr_lib_data_recv_status &= ~status;
-            }
-            
+        case COMM_MGR_LIB_STATUS_GRP_DATA:
+            __comm_mgr_lib_status_rw[cid].comm_mgr_lib_data_recv_status = status;            
             break;
         case COMM_MGR_LIB_STATUS_GRP_GENERIC:
-
+            __comm_mgr_lib_status_rw[cid].comm_mgr_lib_generic_status = status;
             break;
         case COMM_MGR_LIB_STATUS_GRP_ERROR:
-
+            __comm_mgr_lib_status_rw[cid].comm_mgr_lib_error_status = status; 
             break;
         default:
             return COMM_MGR_LIB_UNKNOWN_STATUS_GRP;

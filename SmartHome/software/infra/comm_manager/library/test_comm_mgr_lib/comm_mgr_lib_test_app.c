@@ -8,9 +8,7 @@
 #include <unistd.h>
 #include <string.h>
 
-#include "comm_mgr_lib.h"
-#include "comm_mgr_cmn.h"
-#include "comm_mgr_lib_test_app_enums.h"
+#include "comm_mgr_lib_test_app.h"
 
 // Do "make D=-DTEST_COMM_MGR_LIB" to generate the test app
 #define TEST_COMM_MGR_LIB
@@ -18,6 +16,9 @@
 
 #define TEST_COMM_MGR_LIB_SRC_UID   (1022) // Static UID
 #define TEST_COMM_MGR_LIB_DST_UID   (1023) // Static UID
+
+#define TEST_COMM_MGR_LIB_RECV_QUEUE_SIZE   (100)
+#define TEST_COMM_MGR_LIB_SEND_QUEUE_SIZE   (100)
 
 boolean comm_mgr_test_app_communication_on = FALSE;
 
@@ -40,6 +41,11 @@ int main() {
 #ifdef TEST_UNIX_AF
     memset(&client, 0, sizeof(COMM_MGR_LIB_CLIENT));
     client.clientAf = COMM_MGR_LIB_IPC_AF_UNIX_SOCK_STREAM;
+    client.property = (COMM_MGR_LIB_CLIENT_PROPERTY*)malloc(sizeof(COMM_MGR_LIB_CLIENT_PROPERTY));
+    client.property->app_cb = comm_mgr_lib_test_app_cb;
+    client.property->comm_mgr_lib_recv_queue_size = TEST_COMM_MGR_LIB_RECV_QUEUE_SIZE;
+    client.property->comm_mgr_lib_send_queue_size = TEST_COMM_MGR_LIB_SEND_QUEUE_SIZE;
+    client.property->libInactivityTimeOut = COMM_MGR_LIB_DEFAULT_SELECT_TIMEOUT;
     COMM_MGR_LIB_DEBUG("Starting %s test for COMM_MGR_IPC_LIB_AF_UNIX", COMM_MGR_LIB_NAME);
 
     COMM_MGR_LIB_CLIENT_ID *cid = (COMM_MGR_LIB_CLIENT_ID *)malloc(sizeof(COMM_MGR_LIB_CLIENT_ID));
@@ -190,22 +196,42 @@ void *comm_mgr_test_app_data_receiver(void *arg) {
        eventsRead = utils_task_handlers_get_events(eventList, eventListSize);
        for (uint16_t i = 0; i < eventsRead; i++) {
             if(UTILS_TASK_HANDLER_EVENT_IS_GLOBAL(eventList[i])) {
-                comm_mgr_lib_process_events(cid, FALSE, UTILS_TASK_HANDLER_EVENT_GET(eventList[i]));    
+                comm_mgr_test_app_process_events(cid, FALSE, UTILS_TASK_HANDLER_EVENT_GET(eventList[i]));    
             } else {
-                comm_mgr_lib_process_events(cid, TRUE, UTILS_TASK_HANDLER_EVENT_GET(eventList[i]));
+                comm_mgr_test_app_process_events(cid, TRUE, UTILS_TASK_HANDLER_EVENT_GET(eventList[i]));
             }
        }
     }
 }
 
-COMM_MGR_LIB_ERR comm_mgr_lib_process_events(uint16_t cid, boolean isLocalMode, uint32_t event) {
+COMM_MGR_LIB_ERR comm_mgr_test_app_process_events(uint16_t masterID, boolean isLocalMode, uint32_t event) {
     COMM_MGR_SRV_LOCAL_EVENT ev = (COMM_MGR_SRV_LOCAL_EVENT)event;
+    COMM_MGR_SRV_DEBUG("Processing the event = %d, (%s), mode = %s", 
+                event, DECODE_ENUM(COMM_MGR_SRV_LOCAL_EVENT, ev), isLocalMode?"local":"global");
+
 
 
 }
 
-void comm_mgr_test_app_register_receiver_events(uint32_t taskID) {
-    utils_task_handlers_register_event(COMM_MGR_SRV_LOCAL_EVENT_DATA_RECV, taskID);
+/*
+    Note : Do very minimal functionality here, since this runs in the context of
+    the Library dedicated thread
+*/
+void comm_mgr_lib_test_app_cb(COMM_MGR_LIB_EVENT event) {
+    // Process the events first
+    switch(event) {
+        case COMM_MGR_LIB_EVENT_RECV_READY:
+             
+            break;
+        default:
+            COMM_MGR_LIB_ERROR("Invalid Communication Manager Library event");
+            break;
+    }
+
+    // Enrich the information by optionally querying the COMM_MGR_LIB_STATUS
+    //comm_mgr_lib_get_status();
+
+    // Finally notify the other app-task handlers about this event
 }
 
 #endif /* TEST_COMM_MGR_LIB */

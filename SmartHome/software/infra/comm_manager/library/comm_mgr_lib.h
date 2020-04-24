@@ -119,8 +119,6 @@ typedef struct {
     Also note that, there can be race conditions due to which the flags below might
     not be correct at the time of read if read by a different thread.
 */
-#define COMM_MGR_LIB_RECV_STATUS_PENDING        (1 << 0)
-#define COMM_MGR_LIB_RECV_STATUS_FULL           (1 << 1)
 
 typedef struct {
     uint8_t comm_mgr_lib_data_recv_status;     // Various status regarding RECV DSID
@@ -129,7 +127,7 @@ typedef struct {
 } COMM_MGR_LIB_STATUS;
 
 // Read-only copy used the by apps
-const COMM_MGR_LIB_STATUS comm_mgr_lib_status_ro[COMM_MGR_LIB_MAX_CLIENTS];
+extern const COMM_MGR_LIB_STATUS comm_mgr_lib_status_ro[COMM_MGR_LIB_MAX_CLIENTS];
 
 /******************************************************************************/
 /*          Public Functions                                                  */
@@ -140,9 +138,9 @@ COMM_MGR_LIB_CLIENT_ID comm_mgr_lib_create_client(COMM_MGR_LIB_CLIENT *client);
 COMM_MGR_LIB_ERR comm_mgr_lib_delete_client(COMM_MGR_LIB_CLIENT_ID id);
 COMM_MGR_LIB_ERR comm_mgr_lib_server_communicator(COMM_MGR_LIB_CLIENT_ID id);
 COMM_MGR_MSG* comm_mgr_lib_recv_data(COMM_MGR_LIB_CLIENT_ID id);
-COMM_MGR_LIB_ERR comm_mgr_lib_send_data(COMM_MGR_LIB_CLIENT_ID id, uint16_t dst_uid, 
-                                        char *msg, int len);
+COMM_MGR_LIB_ERR comm_mgr_lib_send_data(COMM_MGR_LIB_CLIENT_ID id, uint16_t dst_uid, char *msg, int len);
 COMM_MGR_LIB_ERR comm_mgr_lib_send_ack(COMM_MGR_LIB_CLIENT_ID id, uint16_t dst_uid, COMM_MGR_SUBMSG_TYPE submsg);                                        
+uint8_t comm_mgr_lib_get_status(uint8_t cid, COMM_MGR_LIB_STATUS_GRP grp);
 
 /******************************************************************************/
 /*          Internal Functions                                                */
@@ -170,4 +168,5 @@ static boolean __comm_mgr_lib_is_uid_valid(uint16_t uid);
 static boolean __comm_mgr_lib_is_uid_static(uint16_t uid);
 static COMM_MGR_LIB_ERR __comm_mgr_lib_server_communicator_with_epoll(COMM_MGR_LIB_CLIENT_ID id);
 static COMM_MGR_LIB_ERR __comm_mgr_lib_server_communicator_with_select(COMM_MGR_LIB_CLIENT_ID id);
+static COMM_MGR_LIB_ERR __comm_mgr_lib_update_status(uint8_t cid, COMM_MGR_LIB_STATUS_GRP grp, uint8_t status);
 #endif /* INCLUDE_COMM_MGR_LIB_H__ */
