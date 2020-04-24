@@ -691,6 +691,11 @@ static COMM_MGR_LIB_ERR __comm_mgr_lib_data_handler(COMM_MGR_LIB_CLIENT *client,
     // Indicate that some data is available
     __comm_mgr_lib_update_status(cid, COMM_MGR_LIB_STATUS_GRP_DATA, COMM_MGR_LIB_DATA_STATUS_RECV_PENDING);
 
+    // Check if the application has registered for a callback 
+    if(client->property && client->property->app_cb) {
+        client->property->app_cb(COMM_MGR_LIB_EVENT_RECV_READY);
+    }
+
     return COMM_MGR_LIB_SUCCESS;
 }
 
