@@ -44,8 +44,8 @@ UTILS_TASK_HANDLER comm_mgr_test_app_workers[] = {
         .handler = comm_mgr_test_app_data_receiver,
         .attr = NULL,
         .arg = NULL,
-        //.eventEnable = TRUE,
-	//.reg_event_cb = comm_mgr_test_app_register_receiver_events,
+        .eventEnable = TRUE,
+	.reg_event_cb = comm_mgr_test_app_register_receiver_events,
     },
   
 };

@@ -393,7 +393,6 @@ COMM_MGR_MSG* comm_mgr_lib_recv_data(COMM_MGR_LIB_CLIENT_ID id) {
 
     UTILS_DS_ID dsid = __comm_mgr_lib_clients[cid].client_ptr->__DSID[COMM_MGR_LIB_DSID_DATA_RECV];
     COMM_MGR_MSG *comm_mgr_msg = (COMM_MGR_MSG *)utils_ds_queue_dequeue(dsid);
-    COMM_MGR_LIB_DEBUG("Received the message %s", comm_mgr_msg->payload);
 
     return comm_mgr_msg;
 }

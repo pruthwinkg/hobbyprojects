@@ -139,8 +139,6 @@ void *comm_mgr_test_app_housekeeper(void *arg) {
 
     COMM_MGR_LIB_ERR rc = COMM_MGR_LIB_SUCCESS;
     char buf[8096];
-    char recv_buf[4096];
-    COMM_MGR_MSG *comm_msg;
     int len = 0;
 
     COMM_MGR_LIB_DEBUG("Client created, id = %d. Ready to send data", cid);
@@ -159,21 +157,6 @@ void *comm_mgr_test_app_housekeeper(void *arg) {
             COMM_MGR_LIB_ERROR("Failed to send the data : %s", buf);
         }
         memset(buf, 0, sizeof(buf));
-
-        comm_msg = comm_mgr_lib_recv_data(cid);
-       
-        if (comm_msg == NULL) {
-            COMM_MGR_LIB_ERROR("No data available from Communication Manager library");
-            continue;
-        }
-
-        COMM_MGR_LIB_TRACE("Data received [%d]: msg_type [%d], submsg_type [%d], src_uid [%d], dst_uid [%d]", 
-                                                    comm_msg->hdr.payloadSize, comm_msg->hdr.msg_type, comm_msg->hdr.submsg_type, 
-                                                    comm_msg->hdr.src_uid, comm_msg->hdr.dst_uid);
-
-        comm_mgr_print_msg_hdr(comm_msg, buf, sizeof(buf));
-        COMM_MGR_LIB_PRINT("%s", buf); 
-
     }
  
 }
@@ -204,13 +187,43 @@ void *comm_mgr_test_app_data_receiver(void *arg) {
     }
 }
 
-COMM_MGR_LIB_ERR comm_mgr_test_app_process_events(uint16_t masterID, boolean isLocalMode, uint32_t event) {
-    COMM_MGR_SRV_LOCAL_EVENT ev = (COMM_MGR_SRV_LOCAL_EVENT)event;
-    COMM_MGR_SRV_DEBUG("Processing the event = %d, (%s), mode = %s", 
-                event, DECODE_ENUM(COMM_MGR_SRV_LOCAL_EVENT, ev), isLocalMode?"local":"global");
+COMM_MGR_LIB_TEST_APP_ERR comm_mgr_test_app_process_events(uint16_t cid, boolean isLocalMode, uint32_t event) {
+    
+    COMM_MGR_MSG *comm_msg;
+    char buf[8096];
+    
+    COMM_MGR_APP_LOCAL_EVENT ev = (COMM_MGR_APP_LOCAL_EVENT)event;
+    COMM_MGR_LIB_DEBUG("Processing the event = %d, mode = %s", 
+                                            event, isLocalMode?"local":"global");
 
+    switch(ev) {
+        case COMM_MGR_APP_LOCAL_EVENT_DATA_RECV:
+        {
+            comm_msg = comm_mgr_lib_recv_data(cid);
+           
+            if (comm_msg == NULL) {
+                COMM_MGR_LIB_ERROR("No data available from Communication Manager library");
+                return COMM_MGR_LIB_TEST_APP_RECV_ERR; 
+            }
 
+            COMM_MGR_LIB_TRACE("Data received [%d]: msg_type [%d], submsg_type [%d], src_uid [%d], dst_uid [%d]", 
+                                                        comm_msg->hdr.payloadSize, comm_msg->hdr.msg_type, comm_msg->hdr.submsg_type, 
+                                                        comm_msg->hdr.src_uid, comm_msg->hdr.dst_uid);
 
+            comm_mgr_print_msg_hdr(comm_msg, buf, sizeof(buf));
+            COMM_MGR_LIB_PRINT("%s", buf);
+        }
+            break;        
+        default:
+           COMM_MGR_LIB_ERROR("Unknown app event");
+           return COMM_MGR_LIB_TEST_APP_UNKNOWN_EVENT;
+    }
+
+    return COMM_MGR_LIB_TEST_APP_SUCCESS;
+}
+
+void comm_mgr_test_app_register_receiver_events(uint32_t taskID) {
+    utils_task_handlers_register_event(COMM_MGR_APP_LOCAL_EVENT_DATA_RECV, taskID); 
 }
 
 /*
@@ -218,10 +231,13 @@ COMM_MGR_LIB_ERR comm_mgr_test_app_process_events(uint16_t masterID, boolean isL
     the Library dedicated thread
 */
 void comm_mgr_lib_test_app_cb(COMM_MGR_LIB_EVENT event) {
+    COMM_MGR_APP_LOCAL_EVENT app_ev = COMM_MGR_APP_LOCAL_EVENT_MAX;
+    boolean priority = FALSE;
     // Process the events first
     switch(event) {
         case COMM_MGR_LIB_EVENT_RECV_READY:
-             
+            COMM_MGR_LIB_DEBUG("Received the COMM_MGR_LIB_EVENT_RECV_READY from Comm Library"); 
+            app_ev = COMM_MGR_APP_LOCAL_EVENT_DATA_RECV;
             break;
         default:
             COMM_MGR_LIB_ERROR("Invalid Communication Manager Library event");
@@ -231,7 +247,10 @@ void comm_mgr_lib_test_app_cb(COMM_MGR_LIB_EVENT event) {
     // Enrich the information by optionally querying the COMM_MGR_LIB_STATUS
     //comm_mgr_lib_get_status();
 
-    // Finally notify the other app-task handlers about this event
+    // Finally notify the other app-task handlers about this event (Send app specific events)
+    if(app_ev != COMM_MGR_APP_LOCAL_EVENT_MAX) {
+        utils_task_handlers_send_event(TRUE, app_ev, priority); 
+    }
 }
 
 #endif /* TEST_COMM_MGR_LIB */
