@@ -267,12 +267,10 @@ int utils_task_handlers_send_event(boolean isLocalMode,
         pthread_mutex_unlock(&__gEventMutex);
 
         // Now notify all the event enabled tasks using local queues
-        __utils_task_handlers_update_local_event_queue(isLocalMode, event, isHighPrio);
-        return 0;
+        return __utils_task_handlers_update_local_event_queue(isLocalMode, event, isHighPrio);
     } else {
         // Local events
-        __utils_task_handlers_update_local_event_queue(isLocalMode, event, isHighPrio);
-        return 0;
+        return __utils_task_handlers_update_local_event_queue(isLocalMode, event, isHighPrio);        
     }
     return 0;
 }

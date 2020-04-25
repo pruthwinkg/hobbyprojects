@@ -10,12 +10,16 @@ set(LIBRARY_LIST "logging"
 set(SOURCE_FILE_LIST1 "comm_mgr_lib_test_app.c"
                      "comm_mgr_lib_test_app_workers.c")
 
-set(SOURCE_FILE_LIST2 "comm_mgr_lib_test_app2.c"
+set(SOURCE_FILE_LIST2 "comm_mgr_lib_test_app.c"
                      "comm_mgr_lib_test_app_workers.c")
 
 # Generate the executable
 add_executable (${EXECUTABLE_NAME1} ${SOURCE_FILE_LIST1})
 add_executable (${EXECUTABLE_NAME2} ${SOURCE_FILE_LIST2})
+
+# Set the Module specific Compile flags
+target_compile_definitions(${EXECUTABLE_NAME1} PRIVATE TEST_APP_1=1)
+target_compile_definitions(${EXECUTABLE_NAME2} PRIVATE TEST_APP_2=1)
 
 # Link any shared or static libraries, if required
 target_link_libraries (${EXECUTABLE_NAME1} LINK_PUBLIC "${LIBRARY_LIST}")
