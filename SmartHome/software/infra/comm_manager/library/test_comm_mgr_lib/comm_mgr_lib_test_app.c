@@ -14,8 +14,17 @@
 #define TEST_COMM_MGR_LIB
 #define TEST_UNIX_AF
 
+#ifdef TEST_APP_1
 #define TEST_COMM_MGR_LIB_SRC_UID   (1022) // Static UID
 #define TEST_COMM_MGR_LIB_DST_UID   (1023) // Static UID
+#define TEST_APP_NAME   "Test-app-1"
+#endif
+
+#ifdef TEST_APP_2
+#define TEST_COMM_MGR_LIB_SRC_UID   (1023) // Static UID
+#define TEST_COMM_MGR_LIB_DST_UID   (1022) // Static UID
+#define TEST_APP_NAME   "Test-app-2"
+#endif
 
 #define TEST_COMM_MGR_LIB_RECV_QUEUE_SIZE   (100)
 #define TEST_COMM_MGR_LIB_SEND_QUEUE_SIZE   (100)
@@ -35,7 +44,7 @@ int main() {
     int len = 0;
 
     comm_mgr_lib_init(LOG_LVL_DEBUG, TEST_COMM_MGR_LIB_SRC_UID, FALSE);
-    COMM_MGR_LIB_TRACE("Starting the test of %s for test-app-1\n", COMM_MGR_LIB_NAME);
+    COMM_MGR_LIB_TRACE("Starting the test of %s for %s\n", COMM_MGR_LIB_NAME, TEST_APP_NAME);
 
 
 #ifdef TEST_UNIX_AF
@@ -64,7 +73,7 @@ int main() {
     comm_mgr_test_app_workers[COMM_MGR_TEST_APP_TASK_ID_DATA_RECEIVER].arg = (void *)cid;
     
 	if(utils_task_handlers_create(COMM_MGR_TEST_APP_TASK_ID_MAX, comm_mgr_test_app_workers, 
-                                0, 0) < 0) {
+                                COMM_MGR_APP_LOCAL_EVENT_MAX, COMM_MGR_APP_GLOBAL_EVENT_MAX) < 0) {
 		COMM_MGR_LIB_ERROR("Failed to create task handlers");
         goto err;
     }
@@ -167,7 +176,7 @@ void *comm_mgr_test_app_data_receiver(void *arg) {
         return NULL;
     }   
     uint16_t cid = *(uint16_t *)arg;
-    COMM_MGR_LIB_TRACE("Test-app-1 ready to handle housekeeping tasks from Client ID %d", cid);
+    COMM_MGR_LIB_TRACE("%s ready to handle housekeeping tasks from Client ID %d", TEST_APP_NAME, cid);
   
     // The process thread should signal the response thread to go and read from protocol Queue
     boolean run_app_receiver_loop = TRUE;
@@ -212,6 +221,9 @@ COMM_MGR_LIB_TEST_APP_ERR comm_mgr_test_app_process_events(uint16_t cid, boolean
 
             comm_mgr_print_msg_hdr(comm_msg, buf, sizeof(buf));
             COMM_MGR_LIB_PRINT("%s", buf);
+            if(comm_msg->hdr.payloadSize) {
+                COMM_MGR_LIB_PRINT("Payload : %s\n", comm_msg->payload);
+            }
         }
             break;        
         default:
@@ -249,7 +261,9 @@ void comm_mgr_lib_test_app_cb(COMM_MGR_LIB_EVENT event) {
 
     // Finally notify the other app-task handlers about this event (Send app specific events)
     if(app_ev != COMM_MGR_APP_LOCAL_EVENT_MAX) {
-        utils_task_handlers_send_event(TRUE, app_ev, priority); 
+        if(utils_task_handlers_send_event(TRUE, app_ev, priority) < 0) {
+            COMM_MGR_LIB_ERROR("Unable to send the event [%d]", app_ev);
+        }
     }
 }
 
