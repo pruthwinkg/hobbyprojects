@@ -1,0 +1,25 @@
+/******************************************************************************/
+                                     README
+/******************************************************************************/
+
+Application Name : shell
+
+Functionality:
+    The shell application is UI for the whole system. The shell is capable of taking
+    various commands from the user, process it and pass it to the appropriate modules
+    in the system.
+
+    Shell broadly does the below functions:
+    - show commands
+    - configure commands
+    - debug commands
+
+Notes:
+    It is implmented to handle both the infra modules and as well user apps. Also, it
+    provides extensions/APIs to integrate to an actual UI. It makes use of Communication
+    Manager Service to pass user-commands to various apps.
+
+    The shell application also has a library part which the participating components integrates.
+    Since the shell application uses the Communication Manager Service, the applications should
+    have the Communication Library Client up and running. The responses from the applications for the
+    requests sent by the shell program will be served by the application itself using the shell library
