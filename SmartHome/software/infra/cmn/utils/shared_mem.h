@@ -17,11 +17,12 @@
 #define UTILS_MAX_SHM_OBJS          (50)
 #define UTILS_SHM_ID_PREFIX         "/UTILS_SHM_ID_"
 
+#define UTILS_LOG_ERROR  LOG_ERROR
+#define UTILS_LOG_TRACE  LOG_TRACE
+#define UTILS_LOG_DEBUG  LOG_DEBUG
 
 #define UTILS_SHM_OBJ_HDR_SIZE      (sizeof(UTILS_SHM_OBJ_HDR)) // According to spec 40 bytes
 #define UTILS_SHM_OBJ_MAGIC_NUM     (0xABCD)
-
-#define UTILS_LOG_TRACE             printf
 
 // Shared memory flags
 #define UTILS_SHM_FLAGS_CREATE		 (1 << 0) // "Create new shm obj"

@@ -21,12 +21,12 @@
 #include "smarthome_essentials.h"
 #include "logging.h"
 
-#define UTILS_LOG_DEBUG             printf
-#define UTILS_LOG_TRACE             printf
-#define UTILS_LOG_ERROR             printf
-
 extern boolean utils_task_handler_initialized;
 typedef uint32_t UTILS_EVENT_ID;
+
+#define UTILS_LOG_ERROR  LOG_ERROR
+#define UTILS_LOG_TRACE  LOG_TRACE
+#define UTILS_LOG_DEBUG  LOG_DEBUG
 
 /*
     Event format : 32 bits

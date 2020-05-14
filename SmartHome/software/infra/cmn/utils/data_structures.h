@@ -15,10 +15,9 @@
 #include "smarthome_essentials.h"
 #include "logging.h"
 
-#define UTILS_LOG_ERROR             printf
-#define UTILS_LOG_TRACE             printf
-#define UTILS_LOG_DEBUG             printf
-
+#define UTILS_LOG_ERROR  LOG_ERROR
+#define UTILS_LOG_TRACE  LOG_TRACE
+#define UTILS_LOG_DEBUG  LOG_DEBUG
 #define UTILS_NOT_YET_IMPLEMENTED   printf("Not yet implemented\n")
 
 #define UTILS_DS_MAX_ID             (100) // Max IDs support (soft limit)
