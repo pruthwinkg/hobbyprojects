@@ -89,6 +89,10 @@ int utils_task_handlers_create(uint8_t num_workers,
         if (workers[i].eventEnable == TRUE) {
             workers[i].reg_event_cb(workers[i].taskID);
         }
+
+        // Datastructure to hold the internal stats about the task
+        workers[i].handler_stat = (UTILS_TASK_HANDLER_STATS*)malloc(sizeof(UTILS_TASK_HANDLER_STATS));
+        memset(workers[i].handler_stat, 0, sizeof(UTILS_TASK_HANDLER_STATS));
     }
 
     /* Start all the tasks */
@@ -414,6 +418,44 @@ UTILS_TASK_HANDLER_STATUS* utils_task_handler_get_taskInfo(void) {
    UTILS_TASK_HANDLER_STATUS *taskInfo = pthread_getspecific(__taskInfoKey);
    return taskInfo;
 }
+
+/*
+    This function is a blocking call. It can be used to sync between a particular task
+    or wait for ALL tasks by passing the TASK_ID_MAX for the application
+
+    Currently it sleeps in logrithmic interval fashion
+
+*/
+void utils_task_handlers_sync(uint32_t taskID) {
+    uint8_t wait = 1;
+
+    // Current task info
+    UTILS_TASK_HANDLER_STATUS *taskInfo = utils_task_handler_get_taskInfo();
+    if ((taskInfo == NULL) || (taskInfo->__task == NULL)) {
+        return;
+    }
+
+    // Wait for all tasks to be ready
+    if(__utilsMaxTasks == taskID) {
+        for (uint8_t i = 0; i < __utilsMaxTasks; i++) {
+            if (__utilsWorkerList[i].taskID == taskInfo->__task->taskID) {
+                continue; // Skip the calling task 
+            }
+            while(__utilsWorkerList[i].handler_stat->isCreated == FALSE) {
+                sleep(wait);
+                wait *= 2;
+            }
+        }   
+    } else if(__utilsWorkerList[taskID].taskID == taskID) { // Wait for a specific task
+        while (__utilsWorkerList[taskID].handler_stat->isCreated == FALSE) {
+            sleep(wait);
+            wait *= 2;
+        }
+    } else {
+        // Do nothing. Simply return. Unknown task ID
+    }
+}
+
 /**********************************************************************************/
 /*                       Internal Functions                                       */
 /**********************************************************************************/
@@ -466,6 +508,10 @@ static void* __utils_task_handlers_startup_routine(void *arg) {
                                         worker->taskattr->eventHighPrioPercent) / 100;
             worker->events->__eventQueueHighPrioSize = high_priority_queue_size; 
         }
+
+        // Update the stats for the task
+        worker->handler_stat->isCreated = TRUE;
+
         // Call the task
         // TODO : See if we have to handle the return code of workers
         worker->handler(worker->arg);

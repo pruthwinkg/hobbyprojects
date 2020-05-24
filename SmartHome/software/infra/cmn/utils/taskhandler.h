@@ -94,6 +94,11 @@ typedef struct {
     uint8_t eventHighPrioPercent; // Low will be calculated from 100-high 
 } UTILS_TASK_HANDLER_ATTR;
 
+// Internal datastructure used maintain statistics about the task
+typedef struct {
+    boolean isCreated;
+} UTILS_TASK_HANDLER_STATS;
+
 typedef struct {
     uint32_t taskID; // <In> Unique within a module
     utils_task_handler handler; // <In>
@@ -103,7 +108,8 @@ typedef struct {
     utils_task_handler_register_events_cb  reg_event_cb; // <In>
     void *task_ret; // Return value of the task <Out>
     UTILS_TASK_HANDLER_ATTR *taskattr; // <In> Usually NULL. But can use to override some defaults
-    UTILS_TASK_HANDLER_EVENTS *events; // <Out> 
+    UTILS_TASK_HANDLER_EVENTS *events; // <Out>
+    UTILS_TASK_HANDLER_STATS *handler_stat; // <Out>
 } UTILS_TASK_HANDLER;
 
 typedef struct {
@@ -141,6 +147,6 @@ void utils_task_handlers_unregister_event(uint16_t event, uint32_t taskID);
 int utils_task_handlers_send_event(boolean isLocalMode, uint16_t event, boolean isHighPrio);
 uint16_t utils_task_handlers_get_events(UTILS_EVENT_ID *eventList, uint16_t eventListSize);
 UTILS_TASK_HANDLER_STATUS* utils_task_handler_get_taskInfo(void);
-
+void utils_task_handlers_sync(uint32_t taskID);
 
 #endif /* INCLUDE_UTILS_TASKHANDLER_H__ */
