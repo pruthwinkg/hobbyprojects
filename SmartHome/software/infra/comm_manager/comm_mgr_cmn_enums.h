@@ -22,6 +22,7 @@ BEGIN_ENUM(COMM_MGR_MSG_TYPE) {
     ADD_ENUM_STR(COMM_MGR_MSG_ACK, "Ack messages for protocol and data")
     ADD_ENUM_STR(COMM_MGR_MSG_DATA, "Used for data txfer after discovery")
     ADD_ENUM_STR(COMM_MGR_MSG_SYSTEM, "Used for sending system info")
+    ADD_ENUM_STR(COMM_MGR_MSG_ANCILLARY, "Used for sending ancillary data")
     ADD_ENUM(COMM_MGR_MSG_MAX)
 } END_ENUM(COMM_MGR_MSG_TYPE);
 

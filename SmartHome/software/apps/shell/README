@@ -38,7 +38,7 @@ Notes:
 Adding a new CLI:
     - Create a new .xml file for the app
     - Add the CLI definetion in the file according to the format specified
-    - The cli_parser program will auto-generate code. This will be invoked from Cmake tool chain
+    - The cli_parser program will auto-generate code. This will be invoked from ./build.sh tool chain
     - The cli_parser program will auto-generate the code inside the cli directory during compilation and 
         once the binary is generated it will delete it.
 

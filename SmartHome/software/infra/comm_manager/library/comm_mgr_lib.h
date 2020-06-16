@@ -35,6 +35,16 @@
 #define COMM_MGR_LIB_RECV_QUEUE_SIZE        (1024) 
 #define COMM_MGR_LIB_SEND_QUEUE_SIZE        (1024)
 
+/*
+    Ancillary send is a new feature added to the communication manager library
+    to support some advacned send mechanism.
+
+    By default it is enabled. If disabled, normal send with NO ancillary support will be enabled
+*/
+#define COMM_MGR_LIB_USE_ANCILLARY_SEND      (TRUE)    // By default enabled
+#define COMM_MGR_LIB_MAX_ANCILLARY_FD        (2)    // Max number of file descriptors currently supported
+#define COMM_MGR_LIB_MAX_ANCILLARY_IOV       (1)    // Max number of non-contagious buffers which needs to sent
+                                                    // For supporting more than 1 IOV need sendmmsg()/recvmmsg() support
 
 // The last argument (void *) can be used to send complex datastrcuture
 // If void *arg is used, then the corresponding dsid_cb should be able to
@@ -80,6 +90,7 @@ typedef struct {
 // Data structure to hold client properties
 typedef struct {
     COMM_MGR_LIB_IPC_AF clientAf;   /* In */
+    boolean advanced_en;            /* In */
     struct hostent server;          /* In */
     int portNum;                    /* In */
     COMM_MGR_LIB_CLIENT_PROPERTY *property; /* In (Optional) If NULL, uses default */
@@ -126,8 +137,6 @@ typedef struct {
     uint8_t comm_mgr_lib_error_status;         // Library error status
 } COMM_MGR_LIB_STATUS;
 
-// Read-only copy used the by apps
-extern const COMM_MGR_LIB_STATUS comm_mgr_lib_status_ro[COMM_MGR_LIB_MAX_CLIENTS];
 
 /******************************************************************************/
 /*          Public Functions                                                  */

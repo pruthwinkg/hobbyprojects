@@ -4,7 +4,8 @@ set (EXECUTABLE_NAME2 "test_lib_comm_mgr_2")
 
 # Set the static and shared libraries on which the executable is dependent
 set(LIBRARY_LIST "logging"
-                 "comm_mgr")
+                 "comm_mgr"
+                 "interface")
 
 # Set the source files required
 set(SOURCE_FILE_LIST1 "comm_mgr_lib_test_app.c"

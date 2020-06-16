@@ -182,9 +182,9 @@ COMM_MGR_SRV_ERR comm_mgr_srv_init_master(COMM_MGR_SRV_MASTER *master) {
 		    /*************************************************************/
 			memset(&un_addr, 0, sizeof(un_addr));
 			un_addr.sun_family = AF_UNIX;   
-			strcpy(un_addr.sun_path, SOCKET_FILE_PATH); 
+			strcpy(un_addr.sun_path, master->uds_file); 
 
-    		unlink(SOCKET_FILE_PATH);
+    		unlink(master->uds_file);
 
 		    rc = bind(master->__masterFd,
 			 		 (struct sockaddr *)&un_addr, sizeof(un_addr));
@@ -219,7 +219,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_init_master(COMM_MGR_SRV_MASTER *master) {
 		COMM_MGR_SRV_TRACE("Created a %s with "
 					    ", Master ID : %d, UDS File : %s successfully", 
 						COMM_MGR_SRV_APP_NAME,
-						master->__masterID, SOCKET_FILE_PATH);
+						master->__masterID, master->uds_file);
 	} else if (master->masterAf == COMM_MGR_SRV_IPC_AF_INET_SOCK_STREAM) {
 		COMM_MGR_SRV_TRACE("Created a %s with "
 					    ", Master ID : %d, Port : %d successfully", 
@@ -463,18 +463,6 @@ COMM_MGR_SRV_ERR comm_mgr_srv_accept_clients(uint16_t masterID) {
                             close_conn = TRUE;
                             break;
                         }
-
-#if 0 // TODO : Enable it Later
-						/**********************************************/
-						/* Echo the data back to the client           */
-						/**********************************************/
-						rc = send(i, buffer, len, 0);
-						if (rc < 0) {
-							COMM_MGR_SRV_ERROR("  send() failed");
-							close_conn = TRUE;
-						 break;
-						}
-#endif
                         
 					} while (TRUE);
 
@@ -538,7 +526,11 @@ COMM_MGR_SRV_ERR comm_mgr_srv_send_data(COMM_MGR_SRV_MASTER *master,
     memcpy(datastream, srv_msg->msg, sizeof(COMM_MGR_MSG_HDR));
     memcpy(datastream + sizeof(COMM_MGR_MSG_HDR), srv_msg->msg->payload, (srv_msg->msg->hdr.payloadSize));
 
-    rc = send(srv_msg->server_fd, datastream, len, 0);
+    if (srv_msg->msg->msg_type == COMM_MGR_MSG_ANCILLARY) {
+        rc = comm_mgr_send_with_ancillary_msg(srv_msg->server_fd, );
+    } else {
+        rc = send(srv_msg->server_fd, datastream, len, 0);
+    }    
 
     if (rc < 0) {
         COMM_MGR_SRV_ERROR("  send() failed");
@@ -678,12 +670,16 @@ int main() {
         return -1;
     }
 
-    // Create each master instance. If multiple master instances needs to be created
+    // Create each master instance type. If multiple master instance types needs to be created
     // call create for each first
-    uint16_t uds_masterID = 0;
-    ret = comm_mgr_srv_create_uds_master(&uds_masterID, COMM_MGR_SRV_MASTER_DEFAULT_UDS);
+    uint16_t uds_masterID[2] = {0, 0};
+    COMM_MGR_SRV_MASTER_INSTANCE uds_instances[2] = {COMM_MGR_SRV_MASTER_DEFAULT_UDS, 
+                                                     COMM_MGR_SRV_MASTER_SECONDARY_UDS};
+    ret = comm_mgr_srv_create_uds_master(uds_masterID, uds_instances, 2, TRUE); // Enable loadsharing
     if (ret != COMM_MGR_SRV_SUCCESS) {
-        __comm_mgr_srv_free_master_id(uds_masterID);
+        for (uint8_t i = 0; i < 2; i++) {
+            __comm_mgr_srv_free_master_id(uds_masterID[i]);
+        }
     }
    
     // Now start the various masters

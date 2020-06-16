@@ -37,6 +37,7 @@ typedef COMM_MGR_SRV_ERR (*comm_mgr_srv_dsid_cb)(UTILS_DS_ID, char *, uint32_t, 
 // This structure defines the Master (Server)
 typedef struct {
     COMM_MGR_SRV_IPC_AF masterAf;   /* In */
+    const char *uds_file;           /* In (Only for UDS) */
     int portNum;                    /* In */
     boolean reuseaddr;              /* In */
     boolean nonblockingIO;          /* In */
@@ -45,7 +46,7 @@ typedef struct {
     comm_mgr_srv_dsid_cb *__dsid_cb;/* In */ // Array of Call back function needed by callback functions
     int __masterFd;                 /* Out */
     boolean __masterReady;          /* Out */ //Useful in multi-threaded environment.Protect by mutex if required 
-    uint16_t __masterID;            /* Out */  // To idetify the Master
+    uint16_t __masterID;            /* Out */  // To idetify the Master    
 } COMM_MGR_SRV_MASTER;
 
 // This message formt is very internal to Communicaton Manager.

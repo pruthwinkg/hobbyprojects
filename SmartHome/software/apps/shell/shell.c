@@ -3,9 +3,11 @@
     componens of this system
 ******************************************************************************/
 
+#include <unistd.h>
 #include "shell.h"
 
 static SHELL_APP *shell_app;
+boolean shell_app_communication_on = FALSE;
 
 static void shell_app_read_line(void) {
 	// Refer https://brennan.io/2015/01/16/write-a-shell-in-c/
@@ -64,6 +66,10 @@ void *shell_app_req_handler(void *arg) {
 	boolean run_shell_app_req_loop = TRUE;
     boolean priority = FALSE;
 	UTILS_DS_ID dsid = shell_app->__DSID[SHELL_APP_LOCAL_EVENT_USER_CMD];
+    
+    // Try to discover the app before accepting any user-requests
+    utils_task_handlers_sync(SHELL_APP_TASK_ID_MAX);
+    shell_app_send_system_tasks(SHELL_APP_SYSTEM_TASK_DISCOVER, FALSE);
 
 	while(run_shell_app_req_loop) {
 		SHELL_APP_PRINT("%s>", shell_app->shell_name);
@@ -126,6 +132,24 @@ void *shell_app_process_handler(void *arg) {
 	return NULL;
 }
 
+void *shell_app_communication_handler(void *arg) {
+    if(arg == NULL) {
+        SHELL_APP_ERROR("Invalid cid");
+        return NULL;
+    }   
+
+    COMM_MGR_LIB_CLIENT_ID cid = *(uint16_t *)arg;
+
+    COMM_MGR_LIB_ERR rc = COMM_MGR_LIB_SUCCESS;
+
+    shell_app_communication_on = TRUE;
+    rc = comm_mgr_lib_server_communicator(cid);
+    shell_app_communication_on = FALSE;
+
+    SHELL_APP_ERROR("Communication Manager Library - Server Communicator is exiting !!!!");
+    return NULL;
+}
+
 SHELL_APP_ERR shell_app_process_events(uint16_t cid, boolean isLocalMode, uint32_t event) {
     SHELL_APP_LOCAL_EVENT ev = (SHELL_APP_LOCAL_EVENT)event;
     SHELL_APP_DEBUG("Processing the event = %d, mode = %s", 
@@ -164,6 +188,11 @@ SHELL_APP_ERR shell_app_process_events(uint16_t cid, boolean isLocalMode, uint32
 
 		}	
 			break;
+		case SHELL_APP_LOCAL_EVENT_SYSTEM:
+		{
+            shell_app_process_system_tasks();    
+		}
+			break;
 		default:
 			SHELL_APP_ERROR("Unkown shell app event");
 			return SHELL_APP_UNKNOWN_EVENT;
@@ -177,12 +206,20 @@ SHELL_APP_ERR shell_app_process_events(uint16_t cid, boolean isLocalMode, uint32
 SHELL_APP_ERR shell_app_process_user_cmd(uint8_t slot) {
 
     // Walkthrough the args list to get the user commands
-    uint8_t i = 1;
-    if(!strcmp(shell_app->args[slot][0], "show")) {
-        while(strcmp(shell_app->args[slot][i], "")) {
-            
-            i++;
-        }
+    uint8_t i = 1; 
+	uint16_t dst_uid = 0;
+	SHELL_APP_ERR rc = SHELL_APP_SUCCESS;
+    if(!strcmp(shell_app->args[slot][0], "show")) {	
+		rc = shell_app_get_uid_from_appName(shell_app->args[slot][1], &dst_uid);
+		if(rc == SHELL_APP_SUCCESS) {
+			shell_app_send_user_cmd(slot, dst_uid, SHELL_APP_USER_CMD_SHOW);
+		} else if (rc == SHELL_APP_DYNAMIC_APP) {
+			// Query the system manager OR communication manager if they know about this app.
+			// Build a local cache of Dynamic apps
+		} else {
+			SHELL_APP_PRINT("Unknown user command\n");
+			return SHELL_APP_UNKNOWN_USER_CMD;
+		}
     } else if(!strcmp(shell_app->args[slot][0], "config")) {
 
     } else if(!strcmp(shell_app->args[slot][0], "debug")) {
@@ -190,7 +227,16 @@ SHELL_APP_ERR shell_app_process_user_cmd(uint8_t slot) {
     } else if (!strcmp(shell_app->args[slot][0], "")) {
         // Do nothing
     } else if (!strcmp(shell_app->args[slot][0], "quit")) {
+		shell_app_close();
         exit(0);
+    } else if((!strcmp(shell_app->args[slot][0], "help")) && 
+            (!strcmp(shell_app->args[slot][1], ""))) { 
+        shell_app_display_help();
+    } else if((!strcmp(shell_app->args[slot][0], "help")) && 
+            (strcmp(shell_app->args[slot][1], ""))) { 
+        shell_app_display_apps_help(shell_app->args[slot][1]);
+    } else if(!strcmp(shell_app->args[slot][0], "list")) { 
+        shell_app_display_list();
     } else {
         SHELL_APP_PRINT("Unknown user command\n");
         return SHELL_APP_UNKNOWN_USER_CMD;
@@ -198,9 +244,132 @@ SHELL_APP_ERR shell_app_process_user_cmd(uint8_t slot) {
     return SHELL_APP_SUCCESS;
 }
 
+void shell_app_send_system_tasks(SHELL_APP_SYSTEM_TASK task, boolean priority) {
+    shell_system_task.task = task;
+    utils_task_handlers_send_event(TRUE, SHELL_APP_LOCAL_EVENT_SYSTEM, priority);
+}
+            
+// Currently supporting only one system task per event call. Later will implement batch processing
+SHELL_APP_ERR shell_app_process_system_tasks() {
+    SHELL_APP_ERR rc = SHELL_APP_SUCCESS;
+    switch(shell_system_task.task) {
+        case SHELL_APP_SYSTEM_TASK_DISCOVER: // Initiate a pre-emptive communication
+            // This increases the efficiency of shell app
+            SHELL_APP_DEBUG("Initiating a pre-emptive communication to discover the app faster");
+            shell_system_task.task = SHELL_APP_SYSTEM_TASK_MAX; // Clear the task
+            rc = shell_app_send_discovery();            
+            break;
+        default:
+            return SHELL_APP_UNKNOWN_SYSTEM_TASK;            
+    }
+    return rc;
+}
+
+/*
+    This function sends a dummy payload to Communication Manager, inorder for it to be 
+    discovered
+*/
+SHELL_APP_ERR shell_app_send_discovery() {
+    char dummy_buf;
+
+    // check if the communication system of this app is ON
+    while(shell_app_communication_on == FALSE) {
+        sleep(5);
+    }
+
+	if(comm_mgr_lib_send_data(shell_app->cid, SMARTHOME_SUBSYSTEM_COMM_MANAGER, &dummy_buf, 1) != COMM_MGR_LIB_SUCCESS ) { 
+		SHELL_APP_ERROR("Failed to send the discovery");
+        return SHELL_APP_FAILURE;
+	}
+    return SHELL_APP_SUCCESS;
+}
+
+/*
+    This function sends the user requests to the Destination UIDs
+
+	Only "show" "config" "debug" commands are allowed
+    Queries to the 'interface library' needs to be sent in the below format
+    <type (1 byte)> <req_type (1 byte)> <out_loc (2 byte)><query> <query>
+
+	Format : buf
+		<magic><type> <req_type> <out_loc> <command-token/full-query>
+        
+        <type> = 1
+        <req_type> = 1
+		<fd> field size (bytes) = 2  (File Descriptor)
+		<command-token> field size (bytes) = 2 (Max)
+*/
+SHELL_APP_ERR shell_app_send_user_cmd(uint8_t slot, uint16_t dst_uid, SHELL_APP_USER_CMD_TYPE type) {
+	if (shell_app_communication_on == FALSE) {
+		SHELL_APP_DEBUG("Communication System of shell app is not ON. Cannot send requests. Exiting");
+		return SHELL_APP_SEND_ERR;
+	}
+
+	if(slot >= SHELL_APP_MAX_CMDS) {
+		SHELL_APP_ERROR("Invalid slot number %d", slot);
+		return SHELL_APP_INVALID_ARG;
+	}
+
+	if((type != SHELL_APP_USER_CMD_SHOW) && (type != SHELL_APP_USER_CMD_CONFIG)
+		&& (type != SHELL_APP_USER_CMD_DEBUG)) {
+		SHELL_APP_ERROR("Invalid command type %d", type); 
+		return SHELL_APP_INVALID_ARG; 
+	}
+
+	int fd = fileno(shell_app->shellFile[slot]);
+	char buf[SHELL_APP_MAX_SEND_BUF_SIZE];
+	uint8_t bufsize = SHELL_APP_MAX_SEND_BUF_SIZE;
+	uint16_t token = 0xFFFF;
+	char full_query[SHELL_APP_MAX_CMD_SIZE];
+	memset(full_query, 0, sizeof(full_query));
+	uint8_t i = 0, len = 0;
+
+	// Form the full_query again from tokens
+	while(strcmp(shell_app->args[slot][i], "")) {
+		strcat(full_query, shell_app->args[slot][i]);
+		if (strcmp(shell_app->args[slot][i+1], "")) {
+			strcat(full_query, " ");
+		}
+		i++;
+	}
+
+    // Refer 'interface' library cmn/interface/interface.h for values needs to be sent
+    uint16_t interface_lib_magic = 0xFACE;
+    memcpy(&buf[0], &interface_lib_magic, sizeof(uint16_t)); // Interfcae magic
+
+    buf[2] = 0; // Text - For cli based apps (shell)
+	memcpy(&buf[4], &fd, sizeof(uint16_t)); // response_loc
+	if(shell_app->query_req_type == 0) {
+        buf[3] = 0; // Token based
+		shell_app_get_token_from_query(shell_app->args[slot][1], full_query, &token);
+		if (token == 0xFFFF) {
+			SHELL_APP_PRINT("Unknown user command %s", full_query);
+			return SHELL_APP_UNKNOWN_USER_CMD;
+		}
+		memcpy(&buf[6], &token, sizeof(uint16_t)); //command-token
+		bufsize = sizeof(char) * 8;
+	} else if (shell_app->query_req_type == 1) {
+		// Send in tokenized format TODO
+	} else {       
+        buf[3] = 1; // Full-query
+		strcpy(&buf[2], shell_app->args[slot][0]); // full query
+		bufsize = strlen(shell_app->args[slot][0]) +  sizeof(uint16_t);
+	}
+
+	SHELL_APP_DEBUG("Sending query [%s], token [0x%x] to dst_uid [%d], src_uid [%d], slot [%d], fd [%d]", 
+						full_query, token, dst_uid, SHELL_APP_SRC_UID, slot, fd);
+
+
+	if(comm_mgr_lib_send_data(shell_app->cid, dst_uid, buf, bufsize) != COMM_MGR_LIB_SUCCESS ) { 
+		SHELL_APP_ERROR("Failed to send the data : %s", buf);
+	}
+	return SHELL_APP_SUCCESS;   
+}
+
 void shell_app_register_process_events(uint32_t taskID) {
 	utils_task_handlers_register_event(SHELL_APP_LOCAL_EVENT_USER_CMD, taskID);
 	utils_task_handlers_register_event(SHELL_APP_LOCAL_EVENT_APP_RES, taskID);
+	utils_task_handlers_register_event(SHELL_APP_LOCAL_EVENT_SYSTEM, taskID);
 }
 
 void shell_app_comm_lib_cb(COMM_MGR_LIB_EVENT event) {
@@ -248,16 +417,33 @@ SHELL_APP* shell_app_init(char *name) {
 	memset(__shell_app->line, 0, sizeof(sizeof(char) * SHELL_APP_MAX_CMD_SIZE));
 	memset(__shell_app->args_usage, SHELL_APP_ARGS_USAGE_RESERVED, SHELL_APP_MAX_CMDS * sizeof(SHELL_APP_ARGS_USAGE));
 	
-	for (uint8_t i = 0; i < SHELL_APP_MAX_CMDS; i++) {
+	char shellfileName[20];
+	for (uint8_t i = 0; i < SHELL_APP_MAX_CMDS; i++) {		
 		__shell_app->args_usage[i] = SHELL_APP_ARGS_USAGE_FREE;
 		__shell_app->args[i] = (char **)malloc(sizeof(char *) * SHELL_APP_MAX_CMD_TOK);
+		memset(shellfileName, 0, sizeof(shellfileName));
+		snprintf(shellfileName, sizeof(shellfileName), "%s/shellslot%d", SHELL_APP_OUT_FILE_LOC, i);
+		__shell_app->shellFile[i] = fopen(shellfileName, "w+");
 		for(uint8_t j = 0; j < SHELL_APP_MAX_CMD_TOK; j++) {
 			__shell_app->args[i][j] = (char *)malloc(sizeof(char) * SHELL_APP_MAX_CMD_TOK_SIZE);
 			memset(__shell_app->args[i][j], 0, sizeof(char) * SHELL_APP_MAX_CMD_TOK_SIZE);
 		}
 	}	
 
+	__shell_app->query_req_type = 0; // Set to send Tokens
+
+    shell_system_task.task = SHELL_APP_SYSTEM_TASK_MAX; // Clear the system task 
+
 	return __shell_app;
+}
+
+void shell_app_close() {
+    char shellfileName[20];
+	for (uint8_t i = 0; i < SHELL_APP_MAX_CMDS; i++) { 
+		fclose(shell_app->shellFile[i]);
+        snprintf(shellfileName, sizeof(shellfileName), "%s/shellslot%d", SHELL_APP_OUT_FILE_LOC, i);
+        remove(shellfileName);
+	}
 }
 
 int main() {
@@ -288,7 +474,7 @@ int main() {
 	client.property->app_cb = shell_app_comm_lib_cb;
 	client.property->comm_mgr_lib_recv_queue_size = SHELL_APP_COMM_MGR_LIB_RECV_QUEUE_SIZE;
 	client.property->comm_mgr_lib_send_queue_size = SHELL_APP_COMM_MGR_LIB_SEND_QUEUE_SIZE;
-	client.property->libInactivityTimeOut = COMM_MGR_LIB_DEFAULT_SELECT_TIMEOUT;
+	client.property->libInactivityTimeOut = 2; //COMM_MGR_LIB_DEFAULT_SELECT_TIMEOUT; // To increase responsiveness
 	COMM_MGR_LIB_CLIENT_ID *cid = (COMM_MGR_LIB_CLIENT_ID *)malloc(sizeof(COMM_MGR_LIB_CLIENT_ID));
 	*cid = comm_mgr_lib_create_client(&client);
 
@@ -300,7 +486,8 @@ int main() {
     /* Create task handlers for this test app */	
     shell_app_workers[SHELL_APP_TASK_ID_REQ].arg = (void *)cid;
     shell_app_workers[SHELL_APP_TASK_ID_PROCESS].arg = (void *)cid;
-	shell_app->cid = cid;    
+    shell_app_workers[SHELL_APP_TASK_ID_COMM].arg = (void *)cid;
+	shell_app->cid = *cid;    
 
 
 	if(utils_task_handlers_create(SHELL_APP_TASK_ID_MAX, shell_app_workers, 
@@ -315,5 +502,6 @@ int main() {
 err:
 	SHELL_APP_DEBUG("Exiting shell program");
 
+	shell_app_close();
     return 0;
 }

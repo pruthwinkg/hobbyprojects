@@ -25,12 +25,26 @@ UTILS_TASK_HANDLER comm_mgr_srv_workers[] =
         .arg = NULL,
         .eventEnable = FALSE,
     },
+    {  
+    /* 
+        Description : This task is dedicated to receive the requests from 
+                ALL clients. The requests can be protocol packets/ack packets/
+                data packets.
+        
+        Secondary UDS Master Instance task
+    */
+        .taskID = COMM_MGR_SRV_TASK_ID_SEC_UDS_REQ,
+        .handler = comm_mgr_srv_sec_uds_request_handler,
+        .attr = NULL,
+        .arg = NULL,
+        .eventEnable = FALSE,
+    },
     {
     /* 
         Description : This task is dedicated to processing ALL types of packets
         from ALL the clients
 
-        Default UDS Master Instance task 
+        Default UDS Master Instance task (shared)
     */
         .taskID = COMM_MGR_SRV_TASK_ID_UDS_PROCESS,
         .handler = comm_mgr_srv_uds_process_handler,
@@ -43,7 +57,7 @@ UTILS_TASK_HANDLER comm_mgr_srv_workers[] =
     /* 
         Description : This task is dedicated to send responses to static dest UIDs. 
 
-        Default UDS Master Instance task 
+        Default UDS Master Instance task (shared)
     */   
         .taskID = COMM_MGR_SRV_TASK_ID_UDS_RES_STATIC_UID,
         .handler = comm_mgr_srv_uds_response_static_handler,
@@ -55,7 +69,7 @@ UTILS_TASK_HANDLER comm_mgr_srv_workers[] =
     /* 
         Description : This task is dedicated to send responses to dynamic dest UIDs. 
 
-        Default UDS Master Instance task 
+        Default UDS Master Instance task (shared)
     */
     {
         .taskID = COMM_MGR_SRV_TASK_ID_UDS_RES_DYNAMIC_UID,
@@ -68,7 +82,7 @@ UTILS_TASK_HANDLER comm_mgr_srv_workers[] =
     /* 
         Description : This task is dedicated to handle all the internal housekeeping jobs. 
 
-        Default UDS Master Instance task 
+        Default UDS Master Instance task (shared)
     */
     {
         .taskID = COMM_MGR_SRV_TASK_ID_UDS_HOUSEKEEPER,

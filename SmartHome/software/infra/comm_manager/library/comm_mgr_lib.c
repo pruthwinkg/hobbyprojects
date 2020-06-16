@@ -35,11 +35,12 @@ static uint16_t *comm_mgr_lib_dynamic_uid_learning_cache = NULL;
 static uint16_t comm_mgr_lib_src_uid = 0;
 
 static boolean comm_mgr_lib_epoll_en = FALSE;
+static boolean comm_mgr_lib_auxillary_send_en = COMM_MGR_LIB_USE_ANCILLARY_SEND;
+
 
 boolean comm_mgr_lib_initialized = FALSE;
 
-static COMM_MGR_LIB_STATUS *__comm_mgr_lib_status_rw; // Internal Read-Write copy of the library
-const COMM_MGR_LIB_STATUS comm_mgr_lib_status_ro[COMM_MGR_LIB_MAX_CLIENTS];
+static COMM_MGR_LIB_STATUS __comm_mgr_lib_status[COMM_MGR_LIB_MAX_CLIENTS];
 
 COMM_MGR_LIB_ERR comm_mgr_lib_init(LOG_LEVEL level, uint16_t src_uid, boolean epoll_en) {
     log_lib_init(NULL, level);
@@ -52,9 +53,8 @@ COMM_MGR_LIB_ERR comm_mgr_lib_init(LOG_LEVEL level, uint16_t src_uid, boolean ep
     comm_mgr_lib_initialized = TRUE;
     comm_mgr_lib_epoll_en = epoll_en;
 
-    __comm_mgr_lib_status_rw = &comm_mgr_lib_status_ro[0]; 
     for (uint16_t i = 0; i < COMM_MGR_LIB_MAX_CLIENTS; i++) {
-        memset(&__comm_mgr_lib_status_rw[i], 0, sizeof(COMM_MGR_LIB_STATUS));
+        memset(&__comm_mgr_lib_status[i], 0, sizeof(COMM_MGR_LIB_STATUS));
     }
 
     return COMM_MGR_LIB_SUCCESS; 
@@ -103,7 +103,8 @@ COMM_MGR_LIB_CLIENT_ID comm_mgr_lib_create_client(COMM_MGR_LIB_CLIENT *client) {
         return COMM_MGR_LIB_INVALID_CLIENT;
     }
 
-    __comm_mgr_lib_clients[id].clientAf = client->clientAf; 
+    __comm_mgr_lib_clients[id].clientAf = client->clientAf;
+    __comm_mgr_lib_clients[id].advanced_en = client->advanced_en;
     __comm_mgr_lib_clients[id].server = client->server;
     __comm_mgr_lib_clients[id].portNum = client->portNum;
 
@@ -114,13 +115,22 @@ COMM_MGR_LIB_CLIENT_ID comm_mgr_lib_create_client(COMM_MGR_LIB_CLIENT *client) {
     switch(__comm_mgr_lib_clients[id].clientAf) {
         case COMM_MGR_LIB_IPC_AF_UNIX_SOCK_STREAM:
             {
+                if(client->uds_file == NULL) {
+                    COMM_MGR_LIB_ERROR("UDS file unspecified");
+                    goto cleanup;
+                }
+                
                 if ( (fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
                     COMM_MGR_LIB_ERROR("socket error");
                     goto cleanup;
                 }
                 memset(&un_addr, 0, sizeof(un_addr));
                 un_addr.sun_family = AF_UNIX;
-                strcpy(un_addr.sun_path, SOCKET_FILE_PATH); 
+                if(client->advanced_en)
+                    strcpy(un_addr.sun_path, ANC_SOCKET_FILE_PATH);
+                } else {
+                    strcpy(un_addr.sun_path, SOCKET_FILE_PATH);
+                }
 
                 if (connect(fd, (struct sockaddr*)&un_addr, sizeof(un_addr)) == -1) {
                     COMM_MGR_LIB_ERROR("connect error");
@@ -407,13 +417,13 @@ uint8_t comm_mgr_lib_get_status(uint8_t cid, COMM_MGR_LIB_STATUS_GRP grp) {
 
     switch(grp) {
         case COMM_MGR_LIB_STATUS_GRP_DATA: // Data grp is a bitmap. It can hold multiple values
-            status = comm_mgr_lib_status_ro[cid].comm_mgr_lib_data_recv_status;            
+            status = __comm_mgr_lib_status[cid].comm_mgr_lib_data_recv_status;            
             break;
         case COMM_MGR_LIB_STATUS_GRP_GENERIC:
-            status = comm_mgr_lib_status_ro[cid].comm_mgr_lib_generic_status;
+            status = __comm_mgr_lib_status[cid].comm_mgr_lib_generic_status;
             break;
         case COMM_MGR_LIB_STATUS_GRP_ERROR:
-            status = comm_mgr_lib_status_ro[cid].comm_mgr_lib_error_status;
+            status = __comm_mgr_lib_status[cid].comm_mgr_lib_error_status;
             break;
         default:
             return 0xFF;
@@ -1234,17 +1244,172 @@ static COMM_MGR_LIB_ERR __comm_mgr_lib_update_status(uint8_t cid, COMM_MGR_LIB_S
 
     switch(grp) {
         case COMM_MGR_LIB_STATUS_GRP_DATA:
-            __comm_mgr_lib_status_rw[cid].comm_mgr_lib_data_recv_status = status;            
+            __comm_mgr_lib_status[cid].comm_mgr_lib_data_recv_status = status;            
             break;
         case COMM_MGR_LIB_STATUS_GRP_GENERIC:
-            __comm_mgr_lib_status_rw[cid].comm_mgr_lib_generic_status = status;
+            __comm_mgr_lib_status[cid].comm_mgr_lib_generic_status = status;
             break;
         case COMM_MGR_LIB_STATUS_GRP_ERROR:
-            __comm_mgr_lib_status_rw[cid].comm_mgr_lib_error_status = status; 
+            __comm_mgr_lib_status[cid].comm_mgr_lib_error_status = status; 
             break;
         default:
             return COMM_MGR_LIB_UNKNOWN_STATUS_GRP;
     }
     return COMM_MGR_LIB_SUCCESS;
+}
+
+/*
+    This is a new function added to the arsenal of the communication manager library. This function is
+    capable of sending ancillary control data along with the regular user data as well.
+
+    This function can also send multiple buffers
+
+    It can be used to send array of file descriptors, credentials etc
+
+    Refer : https://www.ibm.com/support/knowledgecenter/ssw_ibm_i_72/apis/sendms.htm
+
+
+    Note: A software limit is put on this function for how many scatter/gather array (iov) can be used. And also
+    a limit is put for number of file descriptors that can be sent
+*/
+static COMM_MGR_LIB_ERR __comm_mgr_lib_send_with_ancillary_msg(int fd,
+                                                              void **ptr, size_t *nbytes, uint8_t niov,
+                                                              int *sendfds, uint8_t num_sendfds) {
+    struct msghdr   msg;
+    struct iovec    iov[niov];
+    struct cmsghdr  *cmptr;
+    COMM_MGR_LIB_ERR rc = COMM_MGR_LIB_SUCCESS;
+    ssize_t sent_bytes = 0;
+
+    if(comm_mgr_lib_auxillary_send_en == FALSE) {
+        COMM_MGR_LIB_ERROR("Auxillary send option is not enabled");
+        return COMM_MGR_LIB_SEND_ERR;
+    }
+
+    if(fd < 0) {
+        COMM_MGR_LIB_ERROR("Invalid argument (Bad socket)");
+        return COMM_MGR_LIB_INVALID_ARG;
+    }
+
+    if((num_sendfds > 0) && (sendfds == NULL)) {
+        COMM_MGR_LIB_ERROR("Invalid argument (sendfds is NULL)");
+        return COMM_MGR_LIB_INVALID_ARG;
+    }
+
+    if(num_sendfds > COMM_MGR_LIB_MAX_ANCILLARY_FD) {
+        COMM_MGR_LIB_ERROR("Max number of file descriptors supported is %d. Trying to send %d",
+                        COMM_MGR_LIB_MAX_ANCILLARY_FD, num_sendfds);
+        return COMM_MGR_LIB_SEND_ERR;
+    }
+
+    if(niov > COMM_MGR_LIB_MAX_ANCILLARY_IOV) {
+        COMM_MGR_LIB_ERROR("Max number of IOV supported is %d. Trying to send %d",
+                        COMM_MGR_LIB_MAX_ANCILLARY_IOV, niov);
+        return COMM_MGR_LIB_SEND_ERR;
+    }
+
+    if((niov > 0) && (nbytes == NULL)) {
+        COMM_MGR_LIB_ERROR("Invalid argument (nbytes is NULL)");
+        return COMM_MGR_LIB_INVALID_ARG;
+    }
+
+    // Sanitize the whole niov
+    if(niov > 0) {
+        for (uint8_t i = 0; i < niov; i++) {
+            if(nbytes[i] == 0) {
+                COMM_MGR_LIB_ERROR("Invalid argument. nbytes[%d] = 0", i);
+                return COMM_MGR_LIB_INVALID_ARG;
+            }
+            if(ptr[i] == NULL) {
+                COMM_MGR_LIB_ERROR("Invalid argument. ptr[%d] = NULL", i);
+                return COMM_MGR_LIB_INVALID_ARG;
+            }
+        }
+    }
+
+    memset(&msg, 0, sizeof(msg));
+  
+    if (num_sendfds > 0) {
+        char control[CMSG_SPACE(sizeof(int) * num_sendfds)];
+
+        msg.msg_control = control;
+        msg.msg_controllen = sizeof(control);
+
+        cmptr = CMSG_FIRSTHDR(&msg);
+        cmptr->cmsg_level = SOL_SOCKET;
+        cmptr->cmsg_type = SCM_RIGHTS;
+        cmptr->cmsg_len = CMSG_LEN(sizeof(int) * num_sendfds);
+        *((int *) CMSG_DATA(cmptr)) = sendfd;
+        memcpy(CMSG_DATA(cmsg), sendfds, sizeof(int) * num_sendfds);
+    }
+
+    // Support only connected sockets
+    msg.msg_name = NULL;
+    msg.msg_namelen = 0;
+
+    if(niov > 0) {
+        for (uint8_t i = 0; i < niov; i++) {
+            iov[i].iov_base = ptr[i];
+            iov[i].iov_len = nbytes[i];
+        }
+    }
+
+    msg.msg_iov = iov;
+    msg.msg_iovlen = niov;
+
+    sent_bytes = sendmsg(fd, &msg, 0);
+    if(sent_bytes < 0) {
+        COMM_MGR_LIB_ERROR("Failed to send data");
+        return COMM_MGR_LIB_SEND_ERR; 
+    }
+    return COMM_MGR_LIB_SUCCESS;
+}
+
+static COMM_MGR_LIB_ERR __comm_mgr_lib_recv_with_ancillary_msg(int fd,
+															  void **ptr, size_t *nbytes, uint8_t *niov,
+														      int *recvfds, uint8_t *num_recvfds) {
+	struct msghdr   msg;
+    struct iovec    iov[1];
+    ssize_t         recv_bytes;  
+    struct cmsghdr  *cmptr;
+    char control[CMSG_SPACE(sizeof(int))];
+    uint8_t num_recvfds_tmp = 0;
+   
+    memset(&msg, 0, sizeof(msg));
+    
+    msg.msg_control = control;
+    msg.msg_controllen = sizeof(control);
+   
+	// Support only connected sockets 
+    msg.msg_name = NULL;
+    msg.msg_namelen = 0;
+    
+    iov[0].iov_base = ptr;
+    iov[0].iov_len = nbytes;
+    msg.msg_iov = iov;
+    msg.msg_iovlen = 1;
+    
+    if ((recv_bytes = recvmsg(fd, &msg, 0)) <= 0) {
+		COMM_MGR_LIB_ERROR("Failed to recv data");
+        return COMM_MGR_LIB_RECV_ERR;
+	}
+   
+    // Some control data is available
+    if(msg.msg_controllen > 0) {
+        cmptr = CMSG_FIRSTHDR(&msg);
+        while((cmptr != NULL)) {
+            if(cmptr->cmsg_len == CMSG_LEN(sizeof(int))) {
+                if ((cmptr->cmsg_level == SOL_SOCKET) && (cmptr->cmsg_type == SCM_RIGHTS)) {
+                    recvfds[num_recvfds_tmp] = *((int *) CMSG_DATA(cmptr));
+                    num_recvfds_tmp++;
+                }
+            }
+
+            cmptr = CMSG_NXTHDR(&msg, cmptr);                
+        }
+        *num_recvfds = num_recvfds_tmp;
+    }
+
+	return COMM_MGR_LIB_SUCCESS;
 }
 

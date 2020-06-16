@@ -5,132 +5,203 @@
 
 #include "comm_mgr_srv_uds.h"
 
+uint8_t g_comm_mgr_uds_master_instances_num = 0;
+boolean g_comm_mgr_uds_loadsharing_en = FALSE;
 
 /*
-    @brief This function creates a unique instance of UDS master
+    @brief This function creates a unique set of instances of UDS type
 
-    Each Master instance will have it own set of tasks identified by task IDs
+    Each Master instance will have it own set of tasks identified by task IDs.
+    If loadsharing option is enabled, then most of the task IDs will be shared
+
+    This function needs to be called only once.
+
+    Refer the SoftwareSpecifications Documents - Communication Manager Multi-master instace
+    section to undertsand about the Mluti-Master design.
+
+    A secondary UDS Master is created to serve the Ancillary data/Advanced communication
+    facilties
+
 */
-COMM_MGR_SRV_ERR comm_mgr_srv_create_uds_master(uint16_t *masterID, COMM_MGR_SRV_MASTER_INSTANCE instance) {
+COMM_MGR_SRV_ERR comm_mgr_srv_create_uds_master(uint16_t *masterID, COMM_MGR_SRV_MASTER_INSTANCE *instances,
+                                               uint8_t num_instances, boolean loadsharing) {
     COMM_MGR_SRV_ERR ret = COMM_MGR_SRV_SUCCESS;
     COMM_MGR_SRV_MASTER uds_master;
+  
+    g_comm_mgr_uds_master_instances_num = num_instances;
+    g_comm_mgr_uds_loadsharing_en = loadsharing;
 
-    memset(&uds_master, 0, sizeof(COMM_MGR_SRV_MASTER));
-    uds_master.masterAf = COMM_MGR_SRV_IPC_AF_UNIX_SOCK_STREAM;
-    uds_master.reuseaddr = TRUE; 
-    uds_master.nonblockingIO = TRUE; 
-    uds_master.srvInactivityTimeOut = -1; // Wait even if no client activity
+    uint16_t *g_masterID = (uint16_t *)malloc(sizeof(uint16_t) * num_instances);
 
-    // For now, only the default DSIDs are sufficient for UDS
-    uds_master.__DSID = (UTILS_DS_ID *)malloc(sizeof(UTILS_DS_ID) * COMM_MGR_SRV_DSID_MAX);
-    uds_master.__dsid_cb = (comm_mgr_srv_dsid_cb *)malloc(sizeof(comm_mgr_srv_dsid_cb) * COMM_MGR_SRV_DSID_MAX);
+    for (uint8_t i = 0; i < num_instances; i++) {
+        memset(&uds_master, 0, sizeof(COMM_MGR_SRV_MASTER));
+        uds_master.masterAf = COMM_MGR_SRV_IPC_AF_UNIX_SOCK_STREAM;
+        switch(instances[i]) {
+            case COMM_MGR_SRV_MASTER_DEFAULT_UDS:
+                uds_master.uds_file = SOCKET_FILE_PATH;
+                break;
+            case COMM_MGR_SRV_MASTER_SECONDARY_UDS:
+                uds_master.uds_file = ANC_SOCKET_FILE_PATH;
+                break;
+             default:
+                COMM_MGR_SRV_ERROR("Not yet supported");
+                return COMM_MGR_SRV_UDS_MASTER_INIT_ERR;
+        }                
+        uds_master.reuseaddr = TRUE; 
+        uds_master.nonblockingIO = TRUE; 
+        uds_master.srvInactivityTimeOut = -1; // Wait even if no client activity
 
-    // Create a Circular Queue for storing the received data from clients
-    UTILS_QUEUE queue;
-    queue.type = UTILS_QUEUE_CIRCULAR;
-    queue.size = UDS_MASTER_RECV_QUEUE_SIZE;
-    queue.isPriority = FALSE;
-    uds_master.__DSID[COMM_MGR_SRV_DSID_RECV] = utils_ds_queue_create(&queue);
-    if (uds_master.__DSID[COMM_MGR_SRV_DSID_RECV] == 0) {
-        COMM_MGR_SRV_ERROR("Failed to create a UDS master instance");
-        return COMM_MGR_SRV_UDS_MASTER_INIT_ERR;
-    }
+        // For now, only the default DSIDs are sufficient for UDS
+        uds_master.__DSID = (UTILS_DS_ID *)malloc(sizeof(UTILS_DS_ID) * COMM_MGR_SRV_DSID_MAX);
+        uds_master.__dsid_cb = (comm_mgr_srv_dsid_cb *)malloc(sizeof(comm_mgr_srv_dsid_cb) * COMM_MGR_SRV_DSID_MAX);
 
-    // Create a Circular Queue for storing the data to be sent to clients
-    queue.type = UTILS_QUEUE_CIRCULAR;
-    queue.size = UDS_MASTER_SEND_QUEUE_SIZE;
-    queue.isPriority = FALSE;
-    uds_master.__DSID[COMM_MGR_SRV_DSID_SEND] = utils_ds_queue_create(&queue);
-    if (uds_master.__DSID[COMM_MGR_SRV_DSID_SEND] == 0) {
-        COMM_MGR_SRV_ERROR("Failed to create a UDS master instance");
-        return COMM_MGR_SRV_UDS_MASTER_INIT_ERR;
-    }
-
-    // Create a Circular Queue for storing the data to be sent to clients
-    queue.type = UTILS_QUEUE_CIRCULAR;
-    queue.size = UDS_MASTER_SEND_QUEUE_SIZE;
-    queue.isPriority = FALSE;
-    uds_master.__DSID[COMM_MGR_SRV_DSID_HOUSEKEEP] = utils_ds_queue_create(&queue);
-    if (uds_master.__DSID[COMM_MGR_SRV_DSID_HOUSEKEEP] == 0) {
-        COMM_MGR_SRV_ERROR("Failed to create a UDS master instance");
-        return COMM_MGR_SRV_UDS_MASTER_INIT_ERR;
-    }
-
-    uds_master.__dsid_cb[COMM_MGR_SRV_DSID_RECV] = comm_mgr_srv_uds_master_recv_data;
-    uds_master.__dsid_cb[COMM_MGR_SRV_DSID_PROTO] = comm_mgr_srv_uds_master_proto_data;
-    uds_master.__dsid_cb[COMM_MGR_SRV_DSID_SEND] = comm_mgr_srv_uds_master_send_data;
-    uds_master.__dsid_cb[COMM_MGR_SRV_DSID_HOUSEKEEP] = comm_mgr_srv_uds_master_housekeeper;
-
-    ret = comm_mgr_srv_init_master(&uds_master);
-    if (ret != COMM_MGR_SRV_SUCCESS) {
-        COMM_MGR_SRV_ERROR("Failed to create a UDS master instance");
-        return ret;
-    }
-
-    // Each type of Master Instances (UDS, IDS, etc), share a gloabl protocol queue.
-    // That is all UDS masters share same protocol queue, and similarly IDS 
-
-    uint16_t *g_masterID = (uint16_t *)malloc(sizeof(uint16_t));
-    *g_masterID = uds_master.__masterID;
-
-    switch(instance) {
-        case COMM_MGR_SRV_MASTER_DEFAULT_UDS:
-            comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_UDS_REQ].arg = (void *)g_masterID;    
-            comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_UDS_PROCESS].arg = (void *)g_masterID;
-            comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_UDS_RES_STATIC_UID].arg = (void *)g_masterID;
-            comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_UDS_RES_DYNAMIC_UID].arg = (void *)g_masterID;
-            comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_UDS_HOUSEKEEPER].arg = (void *)g_masterID;
-            break;
-        default:
-            COMM_MGR_SRV_ERROR("Not yet supported");
+        // Create a Circular Queue for storing the received data from clients
+        UTILS_QUEUE queue;
+        queue.type = UTILS_QUEUE_CIRCULAR;
+        queue.size = UDS_MASTER_RECV_QUEUE_SIZE;
+        queue.isPriority = FALSE;
+        uds_master.__DSID[COMM_MGR_SRV_DSID_RECV] = utils_ds_queue_create(&queue);
+        if (uds_master.__DSID[COMM_MGR_SRV_DSID_RECV] == 0) {
+            COMM_MGR_SRV_ERROR("Failed to create a UDS master instance");
             return COMM_MGR_SRV_UDS_MASTER_INIT_ERR;
-            break;
-    }
-    *masterID = *g_masterID;
+        }
 
-    COMM_MGR_SRV_TRACE("Created a UDS master instance ID 0x%x", *masterID);
+        // Create a Circular Queue for storing the data to be sent to clients
+        queue.type = UTILS_QUEUE_CIRCULAR;
+        queue.size = UDS_MASTER_SEND_QUEUE_SIZE;
+        queue.isPriority = FALSE;
+        uds_master.__DSID[COMM_MGR_SRV_DSID_SEND] = utils_ds_queue_create(&queue);
+        if (uds_master.__DSID[COMM_MGR_SRV_DSID_SEND] == 0) {
+            COMM_MGR_SRV_ERROR("Failed to create a UDS master instance");
+            return COMM_MGR_SRV_UDS_MASTER_INIT_ERR;
+        }
+
+        // Create a Circular Queue for storing the data to be sent to clients
+        queue.type = UTILS_QUEUE_CIRCULAR;
+        queue.size = UDS_MASTER_SEND_QUEUE_SIZE;
+        queue.isPriority = FALSE;
+        uds_master.__DSID[COMM_MGR_SRV_DSID_HOUSEKEEP] = utils_ds_queue_create(&queue);
+        if (uds_master.__DSID[COMM_MGR_SRV_DSID_HOUSEKEEP] == 0) {
+            COMM_MGR_SRV_ERROR("Failed to create a UDS master instance");
+            return COMM_MGR_SRV_UDS_MASTER_INIT_ERR;
+        }
+
+        uds_master.__dsid_cb[COMM_MGR_SRV_DSID_RECV] = comm_mgr_srv_uds_master_recv_data;
+        uds_master.__dsid_cb[COMM_MGR_SRV_DSID_PROTO] = comm_mgr_srv_uds_master_proto_data;
+        uds_master.__dsid_cb[COMM_MGR_SRV_DSID_SEND] = comm_mgr_srv_uds_master_send_data;
+        uds_master.__dsid_cb[COMM_MGR_SRV_DSID_HOUSEKEEP] = comm_mgr_srv_uds_master_housekeeper;
+
+        ret = comm_mgr_srv_init_master(&uds_master);
+        if (ret != COMM_MGR_SRV_SUCCESS) {
+            COMM_MGR_SRV_ERROR("Failed to create a UDS master instance");
+            return ret;
+        }
+
+        masterID[i] = uds_master.__masterID;
+        COMM_MGR_SRV_TRACE("Created a UDS master instance ID 0x%x", *masterID);
+
+        g_masterID[i] = uds_master.__masterID;
+
+        // Req worker threads cannot be shared
+        switch(instances[i]) {
+            case COMM_MGR_SRV_MASTER_DEFAULT_UDS:
+                comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_UDS_REQ].arg = (void *)g_masterID;    
+                break;
+            case COMM_MGR_SRV_MASTER_SECONDARY_UDS:
+                comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_SEC_UDS_REQ].arg = (void *)g_masterID;
+                break;
+            default:
+                COMM_MGR_SRV_ERROR("Not yet supported");
+                return COMM_MGR_SRV_UDS_MASTER_INIT_ERR;
+        }
+    }
+
+    // If loadsharing is enabled, then below worker threads are shared
+    comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_UDS_PROCESS].arg = (void *)g_masterID;
+    comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_UDS_RES_STATIC_UID].arg = (void *)g_masterID;
+    comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_UDS_RES_DYNAMIC_UID].arg = (void *)g_masterID;
+    comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_UDS_HOUSEKEEPER].arg = (void *)g_masterID;    
 
     return COMM_MGR_SRV_SUCCESS;
 }
 
+/*
+    Request Handler has to be run in seperate worker thread in multi-master cases
+*/
 void* comm_mgr_srv_uds_request_handler(void *arg) {
     if (arg == NULL) {
         COMM_MGR_SRV_ERROR("Invalid Master ID");
         return NULL;
     }
-    uint16_t masterID = *(uint16_t *)arg;
+    uint16_t *masterID = (uint16_t *)arg;
     COMM_MGR_SRV_TRACE("%s ready to accept requests for master ID %d", 
-                COMM_MGR_SRV_APP_NAME, masterID);
-    comm_mgr_srv_accept_clients(masterID);
+                COMM_MGR_SRV_APP_NAME, masterID[0]);
+    comm_mgr_srv_accept_clients(masterID[0]);
 }
 
-void* comm_mgr_srv_uds_process_handler(void *arg) {
-    if (arg == NULL) {
-        COMM_MGR_SRV_ERROR("Invalid Master ID");
-        return NULL;
-    }
-    uint16_t masterID = *(uint16_t *)arg;
-    COMM_MGR_SRV_TRACE("%s ready to process requests for master ID %d", 
-                COMM_MGR_SRV_APP_NAME, masterID);
-
-    // The request thread should signal the process thread to go and read from Queue
-    boolean run_uds_process_loop = TRUE;
+/*
+    A generic run loop for UDS masters. Any worker thread can call this function to
+    wait for events and process it.
+*/
+static void __comm_mgr_srv_uds_run_loop(uint16_t *masterID) {
+    boolean run_uds_loop = TRUE;
     uint16_t eventListSize = 5;
     uint32_t eventList[eventListSize];
     uint16_t eventsRead = 0;
 
-    while(run_uds_process_loop) {
+    while(run_uds_loop) {
        eventsRead = utils_task_handlers_get_events(eventList, eventListSize);
        for (uint16_t i = 0; i < eventsRead; i++) {
-            if(UTILS_TASK_HANDLER_EVENT_IS_GLOBAL(eventList[i])) {
-                comm_mgr_srv_uds_process_events(masterID, FALSE, UTILS_TASK_HANDLER_EVENT_GET(eventList[i]));    
+            if(g_comm_mgr_uds_loadsharing_en == TRUE) {
+                for (uint8_t j = 0; j < g_comm_mgr_uds_master_instances_num; j++) {
+                    if(UTILS_TASK_HANDLER_EVENT_IS_GLOBAL(eventList[i])) {
+                        comm_mgr_srv_uds_process_events(masterID[j], FALSE, UTILS_TASK_HANDLER_EVENT_GET(eventList[i]));    
+                    } else {
+                        comm_mgr_srv_uds_process_events(masterID[j], TRUE, UTILS_TASK_HANDLER_EVENT_GET(eventList[i]));
+                    }
+                }
             } else {
-                comm_mgr_srv_uds_process_events(masterID, TRUE, UTILS_TASK_HANDLER_EVENT_GET(eventList[i]));
+                if(UTILS_TASK_HANDLER_EVENT_IS_GLOBAL(eventList[i])) {
+                    comm_mgr_srv_uds_process_events(masterID[0], FALSE, UTILS_TASK_HANDLER_EVENT_GET(eventList[i]));    
+                } else {
+                    comm_mgr_srv_uds_process_events(masterID[0], TRUE, UTILS_TASK_HANDLER_EVENT_GET(eventList[i]));
+                }
             }
        }
     }
 }
 
+/*
+    If loadsharing is enabled in multi-master case, then the same worker thread is used
+    to process the events from all the masters
+*/
+void* comm_mgr_srv_uds_process_handler(void *arg) {
+    if (arg == NULL) {
+        COMM_MGR_SRV_ERROR("Invalid Master ID");
+        return NULL;
+    }
+    uint16_t *masterID = (uint16_t *)arg;
+    
+    if(g_comm_mgr_uds_loadsharing_en == TRUE) {
+        for(uint8_t i = 0; i < g_comm_mgr_uds_master_instances_num; i++) {
+            COMM_MGR_SRV_TRACE("%s ready to process requests for master ID %d", 
+                        COMM_MGR_SRV_APP_NAME, masterID[i]);
+
+        }
+    } else {
+        COMM_MGR_SRV_TRACE("%s ready to process requests for master ID %d", 
+               COMM_MGR_SRV_APP_NAME, masterID[0]);
+
+    }
+
+    // The request thread should signal the process thread to go and read from Queue
+    __comm_mgr_srv_uds_run_loop(masterID);
+}
+
+/*
+    If loadsharing is enabled in multi-master case, then the same worker thread is used
+    to process the events from all the masters
+*/
 void* comm_mgr_srv_uds_response_static_handler(void *arg) {
     if (arg == NULL) {
         COMM_MGR_SRV_ERROR("Invalid Master ID");
@@ -141,23 +212,13 @@ void* comm_mgr_srv_uds_response_static_handler(void *arg) {
                 COMM_MGR_SRV_APP_NAME, masterID);
   
     // The process thread should signal the response thread to go and read from protocol Queue
-    boolean run_uds_response_loop = TRUE;
-    uint16_t eventListSize = 5;
-    uint32_t eventList[eventListSize];
-    uint16_t eventsRead = 0;
-
-    while(run_uds_response_loop) {
-       eventsRead = utils_task_handlers_get_events(eventList, eventListSize);
-       for (uint16_t i = 0; i < eventsRead; i++) {
-            if(UTILS_TASK_HANDLER_EVENT_IS_GLOBAL(eventList[i])) {
-                comm_mgr_srv_uds_process_events(masterID, FALSE, UTILS_TASK_HANDLER_EVENT_GET(eventList[i]));    
-            } else {
-                comm_mgr_srv_uds_process_events(masterID, TRUE, UTILS_TASK_HANDLER_EVENT_GET(eventList[i]));
-            }
-       }
-    }
+    __comm_mgr_srv_uds_run_loop(masterID);
 }
 
+/*
+    If loadsharing is enabled in multi-master case, then the same worker thread is used
+    to process the events from all the masters
+*/
 void* comm_mgr_srv_uds_response_dynamic_handler(void *arg) {
     if (arg == NULL) {
         COMM_MGR_SRV_ERROR("Invalid Master ID");
@@ -166,25 +227,15 @@ void* comm_mgr_srv_uds_response_dynamic_handler(void *arg) {
     uint16_t masterID = *(uint16_t *)arg;
     COMM_MGR_SRV_TRACE("%s ready to send responses for dynamic UIDs from master ID %d", 
                 COMM_MGR_SRV_APP_NAME, masterID);
-  
+ 
     // The process thread should signal the response thread to go and read from protocol Queue
-    boolean run_uds_response_loop = TRUE;
-    uint16_t eventListSize = 5;
-    uint32_t eventList[eventListSize];
-    uint16_t eventsRead = 0;
-
-    while(run_uds_response_loop) {
-       eventsRead = utils_task_handlers_get_events(eventList, eventListSize);
-       for (uint16_t i = 0; i < eventsRead; i++) {
-            if(UTILS_TASK_HANDLER_EVENT_IS_GLOBAL(eventList[i])) {
-                comm_mgr_srv_uds_process_events(masterID, FALSE, UTILS_TASK_HANDLER_EVENT_GET(eventList[i]));    
-            } else {
-                comm_mgr_srv_uds_process_events(masterID, TRUE, UTILS_TASK_HANDLER_EVENT_GET(eventList[i]));
-            }
-       }
-    }
+    __comm_mgr_srv_uds_run_loop(masterID);
 }
 
+/*
+    If loadsharing is enabled in multi-master case, then the same worker thread is used
+    to process the events from all the masters
+*/
 void* comm_mgr_srv_uds_housekeeping_handler(void *arg) {
     if (arg == NULL) {
         COMM_MGR_SRV_ERROR("Invalid Master ID");
@@ -194,22 +245,7 @@ void* comm_mgr_srv_uds_housekeeping_handler(void *arg) {
     COMM_MGR_SRV_TRACE("%s ready to handle housekeeping tasks from master ID %d", 
                 COMM_MGR_SRV_APP_NAME, masterID);
   
-    // The process thread should signal the response thread to go and read from protocol Queue
-    boolean run_uds_housekeeping_loop = TRUE;
-    uint16_t eventListSize = 5;
-    uint32_t eventList[eventListSize];
-    uint16_t eventsRead = 0;
-
-    while(run_uds_housekeeping_loop) {
-       eventsRead = utils_task_handlers_get_events(eventList, eventListSize);
-       for (uint16_t i = 0; i < eventsRead; i++) {
-            if(UTILS_TASK_HANDLER_EVENT_IS_GLOBAL(eventList[i])) {
-                comm_mgr_srv_uds_process_events(masterID, FALSE, UTILS_TASK_HANDLER_EVENT_GET(eventList[i]));    
-            } else {
-                comm_mgr_srv_uds_process_events(masterID, TRUE, UTILS_TASK_HANDLER_EVENT_GET(eventList[i]));
-            }
-       }
-    }
+    __comm_mgr_srv_uds_run_loop(masterID);
 }
 
 

@@ -30,6 +30,9 @@
 #define TEST_COMM_MGR_LIB_SEND_QUEUE_SIZE   (100)
 
 boolean comm_mgr_test_app_communication_on = FALSE;
+INTERFACE_APP_CB intf_lib_app_cb;
+
+uint8_t g_comm_mgr_lib_test_clients_num = 0;
 
 #ifdef TEST_COMM_MGR_LIB
 
@@ -42,14 +45,23 @@ int main() {
     char recv_buf[4096];
     COMM_MGR_MSG *comm_msg;
     int len = 0;
+    
 
     comm_mgr_lib_init(LOG_LVL_DEBUG, TEST_COMM_MGR_LIB_SRC_UID, FALSE);
+
+    memset(&intf_lib_app_cb, 0, sizeof(INTERFACE_APP_CB));
+    intf_lib_app_cb.text_cb = comm_mgr_lib_test_app_intf_text_cb;
+    if(interface_lib_init(INTERFACE_LIB_SECURE_LEVEL_UNSECURE, &intf_lib_app_cb) != INTERFACE_LIB_SUCCESS) {
+        COMM_MGR_LIB_TRACE("Failed to initialize the interface library");
+    }
+
     COMM_MGR_LIB_TRACE("Starting the test of %s for %s\n", COMM_MGR_LIB_NAME, TEST_APP_NAME);
 
 
 #ifdef TEST_UNIX_AF
     memset(&client, 0, sizeof(COMM_MGR_LIB_CLIENT));
     client.clientAf = COMM_MGR_LIB_IPC_AF_UNIX_SOCK_STREAM;
+    client.advanced_en = FALSE;
     client.property = (COMM_MGR_LIB_CLIENT_PROPERTY*)malloc(sizeof(COMM_MGR_LIB_CLIENT_PROPERTY));
     client.property->app_cb = comm_mgr_lib_test_app_cb;
     client.property->comm_mgr_lib_recv_queue_size = TEST_COMM_MGR_LIB_RECV_QUEUE_SIZE;
@@ -57,18 +69,29 @@ int main() {
     client.property->libInactivityTimeOut = COMM_MGR_LIB_DEFAULT_SELECT_TIMEOUT;
     COMM_MGR_LIB_DEBUG("Starting %s test for COMM_MGR_IPC_LIB_AF_UNIX", COMM_MGR_LIB_NAME);
 
-    COMM_MGR_LIB_CLIENT_ID *cid = (COMM_MGR_LIB_CLIENT_ID *)malloc(sizeof(COMM_MGR_LIB_CLIENT_ID));
+    g_comm_mgr_lib_test_clients_num = 2;
+    COMM_MGR_LIB_CLIENT_ID *cid = (COMM_MGR_LIB_CLIENT_ID *)malloc(sizeof(COMM_MGR_LIB_CLIENT_ID) * g_comm_mgr_lib_test_clients_num);
     
-    *cid = comm_mgr_lib_create_client(&client);
+    cid[0] = comm_mgr_lib_create_client(&client);
+    if(cid[0] == COMM_MGR_LIB_INVALID_CLIENT) { 
+        COMM_MGR_LIB_ERROR("%s test failed for COMM_MGR_IPC_LIB_AF_UNIX, rc = 0x%0x", COMM_MGR_LIB_NAME, rc);
+        return -1;
+    }
 
-    if(*cid == COMM_MGR_LIB_INVALID_CLIENT) { 
+    // Create one more client for ancillary communciation
+    client.advanced_en = TRUE;
+    cid[1] = comm_mgr_lib_create_client(&client);
+    if(cid[1] == COMM_MGR_LIB_INVALID_CLIENT) { 
         COMM_MGR_LIB_ERROR("%s test failed for COMM_MGR_IPC_LIB_AF_UNIX, rc = 0x%0x", COMM_MGR_LIB_NAME, rc);
         return -1;
     }
 
 
     /* Create task handlers for this test app */	
-    comm_mgr_test_app_workers[COMM_MGR_TEST_APP_TASK_ID_COMM].arg = (void *)cid;
+    comm_mgr_test_app_workers[COMM_MGR_TEST_APP_TASK_ID_COMM].arg = (void *)&cid[0];
+    comm_mgr_test_app_workers[COMM_MGR_TEST_APP_TASK_ID_ANC_COMM].arg = (void *)&cid[1];
+
+    // These two workers can be loadshared
     comm_mgr_test_app_workers[COMM_MGR_TEST_APP_TASK_ID_HOUSEKEEPER].arg = (void *)cid;
     comm_mgr_test_app_workers[COMM_MGR_TEST_APP_TASK_ID_DATA_RECEIVER].arg = (void *)cid;
     
@@ -144,7 +167,7 @@ void *comm_mgr_test_app_housekeeper(void *arg) {
         return NULL;
     }
 
-    COMM_MGR_LIB_CLIENT_ID cid = *(uint16_t *)arg;
+    COMM_MGR_LIB_CLIENT_ID *cid = (uint16_t *)arg;
 
     COMM_MGR_LIB_ERR rc = COMM_MGR_LIB_SUCCESS;
     char buf[8096];
@@ -161,9 +184,14 @@ void *comm_mgr_test_app_housekeeper(void *arg) {
 
         COMM_MGR_LIB_DEBUG("Sending data to dst_uid [%d], src_uid [%d]", 
                                     TEST_COMM_MGR_LIB_DST_UID, TEST_COMM_MGR_LIB_SRC_UID);
-    
-        if(comm_mgr_lib_send_data(cid, TEST_COMM_MGR_LIB_DST_UID, buf, strlen(buf)) != COMM_MGR_LIB_SUCCESS ) {
-            COMM_MGR_LIB_ERROR("Failed to send the data : %s", buf);
+        if(!strncmp(buf, "file", 4)) { 
+            if(comm_mgr_lib_send_data(cid[1], TEST_COMM_MGR_LIB_DST_UID, buf, strlen(buf)) != COMM_MGR_LIB_SUCCESS ) {
+                COMM_MGR_LIB_ERROR("Failed to send the data");
+            }
+        } else {
+            if(comm_mgr_lib_send_data(cid[0], TEST_COMM_MGR_LIB_DST_UID, buf, strlen(buf)) != COMM_MGR_LIB_SUCCESS ) {
+                COMM_MGR_LIB_ERROR("Failed to send the data");
+            }
         }
         memset(buf, 0, sizeof(buf));
     }
@@ -175,7 +203,7 @@ void *comm_mgr_test_app_data_receiver(void *arg) {
         COMM_MGR_LIB_ERROR("Invalid Client ID");
         return NULL;
     }   
-    uint16_t cid = *(uint16_t *)arg;
+    uint16_t *cid = (uint16_t *)arg;
     COMM_MGR_LIB_TRACE("%s ready to handle housekeeping tasks from Client ID %d", TEST_APP_NAME, cid);
   
     // The process thread should signal the response thread to go and read from protocol Queue
@@ -187,10 +215,12 @@ void *comm_mgr_test_app_data_receiver(void *arg) {
     while(run_app_receiver_loop) {
        eventsRead = utils_task_handlers_get_events(eventList, eventListSize);
        for (uint16_t i = 0; i < eventsRead; i++) {
-            if(UTILS_TASK_HANDLER_EVENT_IS_GLOBAL(eventList[i])) {
-                comm_mgr_test_app_process_events(cid, FALSE, UTILS_TASK_HANDLER_EVENT_GET(eventList[i]));    
-            } else {
-                comm_mgr_test_app_process_events(cid, TRUE, UTILS_TASK_HANDLER_EVENT_GET(eventList[i]));
+            for (uint8_t j = 0; j < g_comm_mgr_lib_test_clients_num; j++) {
+                if(UTILS_TASK_HANDLER_EVENT_IS_GLOBAL(eventList[i])) {
+                    comm_mgr_test_app_process_events(cid[j], FALSE, UTILS_TASK_HANDLER_EVENT_GET(eventList[i]));    
+                } else {
+                    comm_mgr_test_app_process_events(cid[j], TRUE, UTILS_TASK_HANDLER_EVENT_GET(eventList[i]));
+                }
             }
        }
     }
@@ -224,6 +254,8 @@ COMM_MGR_LIB_TEST_APP_ERR comm_mgr_test_app_process_events(uint16_t cid, boolean
             if(comm_msg->hdr.payloadSize) {
                 COMM_MGR_LIB_PRINT("Payload : %s\n", comm_msg->payload);
             }
+
+            comm_mgr_test_app_process_comm_msg(comm_msg); 
         }
             break;        
         default:
@@ -266,5 +298,82 @@ void comm_mgr_lib_test_app_cb(COMM_MGR_LIB_EVENT event) {
         }
     }
 }
+
+/*
+
+    For the interface library testing purpose, the payload is checked in a hardcoded fashion.
+    <TODO> <TODO> We need to implement the SCOM/Overlay mechanism to make it generic across
+
+*/
+COMM_MGR_LIB_TEST_APP_ERR comm_mgr_test_app_process_comm_msg(COMM_MGR_MSG *comm_msg) {
+    
+    uint16_t word0 = *(uint16_t *)&(comm_msg->payload[0]);
+    uint16_t req_uid = comm_msg->hdr.src_uid;
+    uint16_t res_uid = comm_msg->hdr.dst_uid;
+    uint16_t bufsize = comm_msg->hdr.payloadSize;
+    char *buf = comm_msg->payload;
+
+    if (word0 == 0xFACE) { // This is a interface message
+        interface_lib_process_query(req_uid, res_uid, buf, bufsize);
+    } else {
+        COMM_MGR_LIB_DEBUG("Unknown type of payload");
+    }
+
+    return COMM_MGR_LIB_TEST_APP_SUCCESS;
+}
+
+/*
+    Callback function for the Text type of Query from the Interface library.
+
+    The response to the query needs to be filled in the buffer passed to us by the interface library. 
+    The query format will be determined by the req_type. The response format is always determined by the
+    callback we are getting. For example, in the below callback function we need to put the response
+    back in regular text format.
+
+    Also app needs to return the correct error codes. In case, if the response is to going to be too big to
+    fit in the buffer passed by the interface library, then return INTERFACE_LIB_APP_RESPONSE_PENDING after 
+    filling in partial response
+*/
+INTERFACE_LIB_ERR comm_mgr_lib_test_app_intf_text_cb(INTERFACE_LIB_QUERY_REQ_TYPE req_type, const char *query, 
+                                                     char *buf, uint16_t bufsize) {
+    
+    if (query == NULL) {
+        return INTERFACE_LIB_BAD_QUERY;
+    }
+    
+
+    if (req_type == INTERFACE_LIB_QUERY_REQ_TYPE_TOKEN) {        
+        uint16_t token = 0;
+        uint8_t token_str_len = strlen(query);
+
+        COMM_MGR_LIB_DEBUG("Received the token %s", query);
+
+        return comm_mgr_lib_test_app_intf_process_token_query(token, buf, bufsize); 
+    } else if (req_type == INTERFACE_LIB_QUERY_REQ_TYPE_FULL_QUERY) {
+        return comm_mgr_lib_test_app_intf_process_full_query(query, buf, bufsize);
+    } else {
+        return INTERFACE_LIB_BAD_QUERY;
+    }
+
+    return INTERFACE_LIB_SUCCESS;
+}
+
+INTERFACE_LIB_ERR comm_mgr_lib_test_app_intf_process_token_query(uint16_t token, char *buf, uint16_t bufsize) {
+    
+    switch(token) {
+        case 1:
+
+        default:
+            COMM_MGR_LIB_ERROR("Unknown token %d", token);
+            return INTERFACE_LIB_BAD_QUERY;
+    }
+    return INTERFACE_LIB_SUCCESS;
+}
+
+INTERFACE_LIB_ERR comm_mgr_lib_test_app_intf_process_full_query(const char *query, char *buf, uint16_t bufsize) {
+
+    return INTERFACE_LIB_SUCCESS;
+}
+
 
 #endif /* TEST_COMM_MGR_LIB */

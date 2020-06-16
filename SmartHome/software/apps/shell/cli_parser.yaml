@@ -8,6 +8,7 @@ parser:
     parser_loc : ./apps/shell/          # Parser program and config location
     parser_cli : ./apps/shell/cli/      # CLI files location
     parser_out : ./apps/shell/cli/      # Parser Output
+    parser_cmn_intf : ./apps/shell/shell_intf.h # Common interface file
     parser_files :                      # List files which needs to be parsed (Later will support wildcards)
         - test_comm_mgr_lib_cli.xml
         - a.xml
@@ -17,6 +18,6 @@ parser:
 logger:
     log_en : enable         # Valid values -> enable, disable
     log_lvl : dbg_all     # Valid values -> dbg_all, dbg_info, dbg_warn, dbg_error, dbg_critical
-    log_loc : ./            # The location of log file in case log_type is set to 'file'
+    log_loc : ./cli        # The location of log file in case log_type is set to 'file'
     log_type : console      # Valid values -> file, console
 
