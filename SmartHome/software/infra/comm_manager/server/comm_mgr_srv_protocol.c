@@ -136,6 +136,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_protocol_master_init(COMM_MGR_SRV_MASTER *master) 
     comm_mgr_srv_protocol_queue.type = UTILS_QUEUE_CIRCULAR;
     comm_mgr_srv_protocol_queue.size = COMM_MGR_SRV_PROTOCOL_QUEUE_SIZE; 
     comm_mgr_srv_protocol_queue.isPriority = FALSE;
+    comm_mgr_srv_protocol_queue.isProtected = FALSE;
     master->__DSID[COMM_MGR_SRV_DSID_PROTO] = utils_ds_queue_create(&comm_mgr_srv_protocol_queue);
     if (master->__DSID[COMM_MGR_SRV_DSID_PROTO] == 0) {
         COMM_MGR_SRV_ERROR("Failed to create Protocol queue");
@@ -263,7 +264,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_protocol_client_event(uint8_t ev, void *arg) {
             }
 
             if(found_fd == FALSE) {
-                for (uint16_t i = comm_mgr_srv_dynamic_uid_map_base; i < comm_mgr_srv_dynamic_uid_map_max; i++) {
+                for (uint16_t i = 0; i < (comm_mgr_srv_dynamic_uid_map_max-comm_mgr_srv_dynamic_uid_map_base); i++) {
                     proto_tbl = __comm_mgr_srv_protocol_uid_map_get(i);
                     if((proto_tbl) && (proto_tbl->server_fd == server_fd)) {
                         uid = proto_tbl->UID;
@@ -775,7 +776,7 @@ static COMM_MGR_SRV_ERR __comm_mgr_srv_forward_data(COMM_MGR_SRV_MSG *srv_msg) {
         (srv_msg->msg->hdr.submsg_type == COMM_MGR_SUBMSG_DATA_NACK)) {
         // Insert the msg to the data queue and send event
         if(master->__dsid_cb[COMM_MGR_SRV_DSID_SEND](master->__DSID[COMM_MGR_SRV_DSID_SEND], 
-                                                        NULL, 0, (void *)srv_msg) != COMM_MGR_SRV_SUCCESS) {
+                                                       (void *)srv_msg, NULL, NULL) != COMM_MGR_SRV_SUCCESS) {
             COMM_MGR_SRV_ERROR("Failed to insert the data to DSID 0x%0x", master->__DSID[COMM_MGR_SRV_DSID_SEND]);
             return COMM_MGR_SRV_UTILS_DSID_ERR;
         }
@@ -829,7 +830,7 @@ static COMM_MGR_SRV_ERR __comm_mgr_srv_send_msg(COMM_MGR_MSG_HDR *hdr, char *pay
         (hdr->submsg_type == COMM_MGR_SUBMSG_PROTO_NACK)) {
         // Insert the msg to the protocol queue and send event
         if(master->__dsid_cb[COMM_MGR_SRV_DSID_PROTO](master->__DSID[COMM_MGR_SRV_DSID_PROTO], 
-                                                NULL, 0, (void *)comm_mgr_srv_msg) != COMM_MGR_SRV_SUCCESS) {
+                                            (void *)comm_mgr_srv_msg, NULL, NULL) != COMM_MGR_SRV_SUCCESS) {
             COMM_MGR_SRV_ERROR("Failed to insert the data to DSID 0x%0x", master->__DSID[COMM_MGR_SRV_DSID_PROTO]);
             return COMM_MGR_SRV_UTILS_DSID_ERR;
         }

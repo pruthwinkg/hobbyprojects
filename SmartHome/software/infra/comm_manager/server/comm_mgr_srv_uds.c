@@ -39,9 +39,11 @@ COMM_MGR_SRV_ERR comm_mgr_srv_create_uds_master(uint16_t *masterID, COMM_MGR_SRV
         switch(instances[i]) {
             case COMM_MGR_SRV_MASTER_DEFAULT_UDS:
                 uds_master.uds_file = SOCKET_FILE_PATH;
+                uds_master.ancillary = FALSE;
                 break;
             case COMM_MGR_SRV_MASTER_SECONDARY_UDS:
                 uds_master.uds_file = ANC_SOCKET_FILE_PATH;
+                uds_master.ancillary = TRUE;
                 break;
              default:
                 COMM_MGR_SRV_ERROR("Not yet supported");
@@ -60,6 +62,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_create_uds_master(uint16_t *masterID, COMM_MGR_SRV
         queue.type = UTILS_QUEUE_CIRCULAR;
         queue.size = UDS_MASTER_RECV_QUEUE_SIZE;
         queue.isPriority = FALSE;
+        queue.isProtected = FALSE;
         uds_master.__DSID[COMM_MGR_SRV_DSID_RECV] = utils_ds_queue_create(&queue);
         if (uds_master.__DSID[COMM_MGR_SRV_DSID_RECV] == 0) {
             COMM_MGR_SRV_ERROR("Failed to create a UDS master instance");
@@ -70,6 +73,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_create_uds_master(uint16_t *masterID, COMM_MGR_SRV
         queue.type = UTILS_QUEUE_CIRCULAR;
         queue.size = UDS_MASTER_SEND_QUEUE_SIZE;
         queue.isPriority = FALSE;
+        queue.isProtected = FALSE;
         uds_master.__DSID[COMM_MGR_SRV_DSID_SEND] = utils_ds_queue_create(&queue);
         if (uds_master.__DSID[COMM_MGR_SRV_DSID_SEND] == 0) {
             COMM_MGR_SRV_ERROR("Failed to create a UDS master instance");
@@ -134,8 +138,11 @@ void* comm_mgr_srv_uds_request_handler(void *arg) {
         return NULL;
     }
     uint16_t *masterID = (uint16_t *)arg;
-    COMM_MGR_SRV_TRACE("%s ready to accept requests for master ID %d", 
-                COMM_MGR_SRV_APP_NAME, masterID[0]);
+
+    for (uint8_t i = 0; i < g_comm_mgr_uds_master_instances_num; i++) {
+        COMM_MGR_SRV_TRACE("%s ready to accept requests for master ID %d", 
+                        COMM_MGR_SRV_APP_NAME, masterID[i]);
+    }                
     comm_mgr_srv_accept_clients(masterID[0]);
 }
 
@@ -186,12 +193,10 @@ void* comm_mgr_srv_uds_process_handler(void *arg) {
         for(uint8_t i = 0; i < g_comm_mgr_uds_master_instances_num; i++) {
             COMM_MGR_SRV_TRACE("%s ready to process requests for master ID %d", 
                         COMM_MGR_SRV_APP_NAME, masterID[i]);
-
         }
     } else {
         COMM_MGR_SRV_TRACE("%s ready to process requests for master ID %d", 
                COMM_MGR_SRV_APP_NAME, masterID[0]);
-
     }
 
     // The request thread should signal the process thread to go and read from Queue
@@ -207,10 +212,18 @@ void* comm_mgr_srv_uds_response_static_handler(void *arg) {
         COMM_MGR_SRV_ERROR("Invalid Master ID");
         return NULL;
     }
-    uint16_t masterID = *(uint16_t *)arg;
-    COMM_MGR_SRV_TRACE("%s ready to send responses for static UIDs from master ID %d", 
-                COMM_MGR_SRV_APP_NAME, masterID);
-  
+    uint16_t *masterID = (uint16_t *)arg;
+
+    if(g_comm_mgr_uds_loadsharing_en == TRUE) {
+        for(uint8_t i = 0; i < g_comm_mgr_uds_master_instances_num; i++) {
+            COMM_MGR_SRV_TRACE("%s ready to send responses for static UIDs from master ID %d", 
+                        COMM_MGR_SRV_APP_NAME, masterID[i]);
+        }
+    } else {
+        COMM_MGR_SRV_TRACE("%s ready to send responses for static UIDs from master ID %d", 
+               COMM_MGR_SRV_APP_NAME, masterID[0]);
+    }
+
     // The process thread should signal the response thread to go and read from protocol Queue
     __comm_mgr_srv_uds_run_loop(masterID);
 }
@@ -224,10 +237,18 @@ void* comm_mgr_srv_uds_response_dynamic_handler(void *arg) {
         COMM_MGR_SRV_ERROR("Invalid Master ID");
         return NULL;
     }
-    uint16_t masterID = *(uint16_t *)arg;
-    COMM_MGR_SRV_TRACE("%s ready to send responses for dynamic UIDs from master ID %d", 
-                COMM_MGR_SRV_APP_NAME, masterID);
- 
+    uint16_t *masterID = (uint16_t *)arg;
+
+    if(g_comm_mgr_uds_loadsharing_en == TRUE) {
+        for(uint8_t i = 0; i < g_comm_mgr_uds_master_instances_num; i++) {
+            COMM_MGR_SRV_TRACE("%s ready to send responses for dynamic UIDs from master ID %d", 
+                        COMM_MGR_SRV_APP_NAME, masterID[i]);
+        }
+    } else {
+        COMM_MGR_SRV_TRACE("%s ready to send responses for dynamic UIDs from master ID %d", 
+               COMM_MGR_SRV_APP_NAME, masterID[0]);
+    }
+
     // The process thread should signal the response thread to go and read from protocol Queue
     __comm_mgr_srv_uds_run_loop(masterID);
 }
@@ -241,10 +262,18 @@ void* comm_mgr_srv_uds_housekeeping_handler(void *arg) {
         COMM_MGR_SRV_ERROR("Invalid Master ID");
         return NULL;
     }
-    uint16_t masterID = *(uint16_t *)arg;
-    COMM_MGR_SRV_TRACE("%s ready to handle housekeeping tasks from master ID %d", 
-                COMM_MGR_SRV_APP_NAME, masterID);
-  
+    uint16_t *masterID = (uint16_t *)arg;
+
+    if(g_comm_mgr_uds_loadsharing_en == TRUE) {
+        for(uint8_t i = 0; i < g_comm_mgr_uds_master_instances_num; i++) {
+            COMM_MGR_SRV_TRACE("%s ready to handle housekeeping tasks from master ID %d", 
+                        COMM_MGR_SRV_APP_NAME, masterID[i]);
+        }
+    } else {
+        COMM_MGR_SRV_TRACE("%s ready to handle housekeeping tasks from master ID %d", 
+               COMM_MGR_SRV_APP_NAME, masterID[0]);
+    }
+
     __comm_mgr_srv_uds_run_loop(masterID);
 }
 
@@ -257,56 +286,46 @@ void* comm_mgr_srv_uds_housekeeping_handler(void *arg) {
 
     Even the state machine can be triggered from here
 
-    Note : While inserting the data to the utils_ds, we have to encode the
-    data such that, the reading tasks can easily decode it. Because, the
-    utils_ds is data agnostic library. Its upto the apps to make sure that
-    correct data is decoded.
-
-   Note : In the 'arg', the Communication Manager Core sends us the server fd
+   Note : In the 'arg2', the Communication Manager Core sends us the server fd
           on which the data is received. Map it to UID
-
-    Data Format :
-       | Magic (UDS) | Data len | Data (COMM_MGR_MSG) |
 
     Note : There can be multiple messages in the data received by the Comm Server Core.
         We need identify those indivisual messages and enqueue properly
 
 */
-COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_recv_data(UTILS_DS_ID id, 
-                                        char *data, uint32_t len, void *arg) {
+COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_recv_data(UTILS_DS_ID id, void *arg1, void *arg2, void **arg) {
     boolean priority = FALSE; // This flag needs to be set depending on the
                               // payload received
-    uint32_t server_fd = *(uint32_t *)arg;
+    
+    if(arg1 == NULL) {
+        return COMM_MGR_SRV_INVALID_ARG;       
+    }
+
+    COMM_MGR_SRV_RECV_MSG *comm_srv_rcv_msg = (COMM_MGR_SRV_RECV_MSG *)arg1;
+    
+    COMM_MGR_MSG **comm_msg = comm_srv_rcv_msg->msg;
+    uint8_t comm_num_msgs = comm_srv_rcv_msg->num_msgs;
+    uint32_t server_fd = comm_srv_rcv_msg->server_fd;
 
     if (id == 0) {
         COMM_MGR_SRV_ERROR("Invalid DSID");
         return COMM_MGR_SRV_UTILS_DSID_ERR;
     }
 
-    // Check if there are multiple messages in this msg. But all those messages
-    // are guranteed by the Comm Server Core to belong to server_fd
-    COMM_MGR_MSG *comm_msg = (COMM_MGR_MSG*)data;
-    uint32_t comm_msg_size;
-
-    // Find all the available comm msgs in this byte stream
-    while(comm_msg) {
-        // Server fd is sent in 'arg'. Alloc 4 bytes for storing this fd                             
-        //COMM_MGR_SRV_UDS_MSG *uds_msg = __comm_mgr_srv_uds_msg_encode(data, len, (void *)&server_fd, sizeof(uint32_t)); 
-        COMM_MGR_SRV_UDS_MSG *uds_msg = __comm_mgr_srv_uds_msg_encode((char *)comm_msg, 
-                                               COMM_MGR_MSG_SIZE(comm_msg), (void *)&server_fd, sizeof(uint32_t));
+    for(uint8_t i = 0 ; i < comm_num_msgs; i++) {
+        COMM_MGR_SRV_UDS_MSG *uds_msg = __comm_mgr_srv_uds_msg_create((void *)comm_msg[i], server_fd);
         if (uds_msg == NULL) {
             COMM_MGR_SRV_ERROR("Failed to allocate memory");
             return COMM_MGR_SRV_OUT_OF_MEMORY;
         }
 
-        COMM_MGR_SRV_DEBUG("Inserting data to DSID 0x%0x, len = %d, server fd = %d", id, len, server_fd);
+        COMM_MGR_SRV_DEBUG("Inserting data to DSID 0x%0x, server fd = %d", id, server_fd);
         // Insert the data to Queue
         if(utils_ds_queue_enqueue(id, (void *)uds_msg) < 0) {
             COMM_MGR_SRV_ERROR("Failed to insert the data to DSID 0x%0x", id);
             //return COMM_MGR_SRV_UTILS_DSID_ERR; // Out of multiple msgs if one fails, we shouldnt stop
                             // sending event out for other msgs we have enqueued
         }
-        comm_msg = comm_mgr_get_next_msg((char *)comm_msg);         
     }
 
     // Finally send one event for all those msgs
@@ -315,14 +334,13 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_recv_data(UTILS_DS_ID id,
     return COMM_MGR_SRV_SUCCESS;
 }
 
-// For this function value always comes in *arg
-COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_proto_data(UTILS_DS_ID id, 
-                                            char *data, uint32_t len, void *arg) {
+// For this function value always comes in *arg1
+COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_proto_data(UTILS_DS_ID id, void *arg1, void *arg2, void **arg) {
     boolean priority = FALSE; // Priority can be set to Normal, because since only protocol packets
                               // gets enqueued to protocol queue, all are treated with equal priority
 
-    if (arg == NULL) {
-        COMM_MGR_SRV_ERROR("Invalid argument. arg is NULL");
+    if (arg1 == NULL) {
+        COMM_MGR_SRV_ERROR("Invalid argument. arg1 is NULL");
         return COMM_MGR_SRV_INVALID_ARG;
     }
     if (id == 0) {
@@ -330,16 +348,16 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_proto_data(UTILS_DS_ID id,
         return COMM_MGR_SRV_UTILS_DSID_ERR;
     }
 
-    COMM_MGR_SRV_MSG *srv_msg = (COMM_MGR_SRV_MSG *)arg;
+    COMM_MGR_SRV_MSG *srv_msg = (COMM_MGR_SRV_MSG *)arg1;
 
     // Enqueue the message to protocol queue after encoding in UDS format
-    COMM_MGR_SRV_UDS_MSG *uds_msg = __comm_mgr_srv_uds_msg_encode(NULL, 0, arg, 0); // Hint that no need to malloc by arg_size=0
+    COMM_MGR_SRV_UDS_MSG *uds_msg = __comm_mgr_srv_uds_msg_create((void *)srv_msg, 0);
      if (uds_msg == NULL) {
         COMM_MGR_SRV_ERROR("Failed to allocate memory");
         return COMM_MGR_SRV_OUT_OF_MEMORY;
     }
 
-    COMM_MGR_SRV_DEBUG("Inserting data to DSID 0x%0x, len = %d", id, len);
+    COMM_MGR_SRV_DEBUG("Inserting data to DSID 0x%0x", id);
     // Insert the data to Queue
     if(utils_ds_queue_enqueue(id, (void *)uds_msg) < 0) {
         COMM_MGR_SRV_ERROR("Failed to insert the data to DSID 0x%0x", id);
@@ -360,11 +378,10 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_proto_data(UTILS_DS_ID id,
     Since it is best effort, in case of any error case, the data will be dropped
     and sender will be notified only if required (explicitly asked by sender)
 */
-COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_send_data(UTILS_DS_ID id,
-                                                char *data, uint32_t len, void *arg) {
+COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_send_data(UTILS_DS_ID id, void *arg1, void *arg2, void **arg) {
     boolean priority = FALSE;
 
-    if (arg == NULL) {
+    if (arg1 == NULL) {
         COMM_MGR_SRV_ERROR("Invalid argument. arg is NULL");
         return COMM_MGR_SRV_INVALID_ARG;
     }
@@ -373,9 +390,9 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_send_data(UTILS_DS_ID id,
         return COMM_MGR_SRV_UTILS_DSID_ERR;
     }
 
-    COMM_MGR_SRV_MSG *srv_msg = (COMM_MGR_SRV_MSG *)arg;
+    COMM_MGR_SRV_MSG *srv_msg = (COMM_MGR_SRV_MSG *)arg1;
 
-    COMM_MGR_SRV_DEBUG("Inserting data to DSID 0x%0x, len = %d", id, len);
+    COMM_MGR_SRV_DEBUG("Inserting data to DSID 0x%0x", id);
     // Insert the data to Queue
     if(utils_ds_queue_enqueue(id, (void *)srv_msg) < 0) {
         COMM_MGR_SRV_ERROR("Failed to insert the data to DSID 0x%0x", id);
@@ -395,12 +412,11 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_send_data(UTILS_DS_ID id,
 
     Here the caller has to allocate the memory to arg before calling this
 */
-COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_housekeeper(UTILS_DS_ID id,
-                                                     char *data, uint32_t len, void *arg) {
+COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_housekeeper(UTILS_DS_ID id, void *arg1, void *arg2, void **arg) {
     boolean priority = FALSE;
 
-    if (arg == NULL) {
-        COMM_MGR_SRV_ERROR("Invalid argument. arg is NULL");
+    if (arg1 == NULL) {
+        COMM_MGR_SRV_ERROR("Invalid argument. arg1 is NULL");
         return COMM_MGR_SRV_INVALID_ARG;
     }
 
@@ -409,11 +425,17 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_housekeeper(UTILS_DS_ID id,
         return COMM_MGR_SRV_UTILS_DSID_ERR;
     }
 
-    COMM_MGR_SRV_UDS_HK_JOB *hk_job = (COMM_MGR_SRV_UDS_HK_JOB *)arg;
+    COMM_MGR_SRV_UDS_HK_JOB *hk_job = (COMM_MGR_SRV_UDS_HK_JOB *)arg1;
 
-    COMM_MGR_SRV_DEBUG("Inserting data to DSID 0x%0x, len = %d", id, len);
+    COMM_MGR_SRV_UDS_MSG *uds_msg = __comm_mgr_srv_uds_msg_create((void *)hk_job, 0);
+     if (uds_msg == NULL) {
+        COMM_MGR_SRV_ERROR("Failed to allocate memory");
+        return COMM_MGR_SRV_OUT_OF_MEMORY;
+    }
+
+    COMM_MGR_SRV_DEBUG("Inserting data to DSID 0x%0x", id);
     // Insert the data to Queue
-    if(utils_ds_queue_enqueue(id, (void *)hk_job) < 0) {
+    if(utils_ds_queue_enqueue(id, (void *)uds_msg) < 0) {
         COMM_MGR_SRV_ERROR("Failed to insert the data to DSID 0x%0x", id);
         return COMM_MGR_SRV_UTILS_DSID_ERR;
     }
@@ -450,12 +472,8 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_process_events(uint16_t masterID, boolean isLo
                     if (uds_msg == NULL) {
                         break; // Queue is empty
                     }
-                    if(__comm_mgr_srv_uds_msg_decode(uds_msg, &out_data, &out_datalen, &arg) != COMM_MGR_SRV_SUCCESS) {
-                        uds_msg->action = UDS_MASTER_MSG_ACTION_DROP; // Drop the packet, if unable to decode it (Bad UDS packet)
-                        __comm_mgr_srv_uds_msg_action(uds_msg); 
-                        continue; // Process next in queue
-                    }
-                    COMM_MGR_MSG *comm_mgr_msg = comm_mgr_get_msg(out_data, out_datalen);
+                    
+                    COMM_MGR_MSG *comm_mgr_msg = (COMM_MGR_MSG *)uds_msg->msg;
                     if(comm_mgr_msg == NULL) {
                         uds_msg->action = UDS_MASTER_MSG_ACTION_DROP; // Drop the packet, if unable to get the comm msg (Bad Comm packet)
                         __comm_mgr_srv_uds_msg_action(uds_msg);
@@ -468,9 +486,10 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_process_events(uint16_t masterID, boolean isLo
                                                             comm_mgr_msg->hdr.dst_uid, comm_mgr_msg->hdr.payloadSize);
                     
                     //COMM_MGR_SRV_MSG is the message format used by Comm Mgr to carry internal headers + actual comm msg
+                    // There will be two copies of a packet received. (uds_msg and srv_msg)
                     COMM_MGR_SRV_MSG *comm_mgr_srv_msg = (COMM_MGR_SRV_MSG *)malloc(sizeof(COMM_MGR_SRV_MSG));
                     memset(comm_mgr_srv_msg, 0, sizeof(COMM_MGR_SRV_MSG));
-                    comm_mgr_srv_msg->server_fd = *(uint32_t *)arg;
+                    comm_mgr_srv_msg->server_fd = uds_msg->server_fd;
                     comm_mgr_srv_msg->msg = comm_mgr_msg;
                     
                     // Process the packet
@@ -514,13 +533,8 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_process_events(uint16_t masterID, boolean isLo
                     if (uds_msg == NULL) {
                         break; // Queue is empty
                     }                  
-                    if(__comm_mgr_srv_uds_msg_decode(uds_msg, NULL, 0, &arg) != COMM_MGR_SRV_SUCCESS) {
-                        uds_msg->action = UDS_MASTER_MSG_ACTION_DROP; // Drop the packet, if unable to decode it (Bad UDS packet)
-                        __comm_mgr_srv_uds_msg_action(uds_msg); 
-                        continue; // Process next in queue
-                    }
-                    // arg was already in COMM_MGR_SRV_MSG format when enqueued
-                    COMM_MGR_SRV_MSG *comm_mgr_srv_msg = (COMM_MGR_SRV_MSG *)arg;
+                    
+                    COMM_MGR_SRV_MSG *comm_mgr_srv_msg = (COMM_MGR_SRV_MSG *)uds_msg->msg;
                     if(comm_mgr_srv_msg == NULL) {
                         uds_msg->action = UDS_MASTER_MSG_ACTION_DROP; // Drop the packet
                         __comm_mgr_srv_uds_msg_action(uds_msg);
@@ -586,10 +600,17 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_process_events(uint16_t masterID, boolean isLo
 COMM_MGR_SRV_ERR comm_mgr_srv_uds_handle_housekeeping_events(COMM_MGR_SRV_MASTER *master) {
     boolean handle_housekeeping_event_loop = TRUE;
     COMM_MGR_SRV_ERR ret = COMM_MGR_SRV_SUCCESS;
+    COMM_MGR_SRV_UDS_MSG *uds_msg;
+    COMM_MGR_SRV_UDS_HK_JOB *hk_job;
 
     while(handle_housekeeping_event_loop) {
     // Process all the house keeping events which are pending
-        COMM_MGR_SRV_UDS_HK_JOB *hk_job = (COMM_MGR_SRV_UDS_HK_JOB *)utils_ds_queue_dequeue(master->__DSID[COMM_MGR_SRV_DSID_HOUSEKEEP]);
+        uds_msg = (COMM_MGR_SRV_UDS_MSG *)utils_ds_queue_dequeue(master->__DSID[COMM_MGR_SRV_DSID_HOUSEKEEP]);
+        if (uds_msg == NULL) {
+            break; // Queue is empty
+        }                  
+
+        hk_job = (COMM_MGR_SRV_UDS_HK_JOB *)uds_msg->msg;
         if(hk_job == NULL) {
             break; // Queue is empty
         }
@@ -603,6 +624,10 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_handle_housekeeping_events(COMM_MGR_SRV_MASTER
                 COMM_MGR_SRV_ERROR("Unknown Housekeeping event [%d]", hk_job->event);
                 break;
         }
+        
+        // Once housekkeping job is done, drop the job
+        uds_msg->action = UDS_MASTER_MSG_ACTION_DROP; // Drop the packet
+        __comm_mgr_srv_uds_msg_action(uds_msg);
     }
     COMM_MGR_SRV_DEBUG("Processed the DSID [0x%0x] completely for event %d", 
                            master->__DSID[COMM_MGR_SRV_DSID_HOUSEKEEP], COMM_MGR_SRV_LOCAL_EVENT_HOUSEKEEP);
@@ -663,79 +688,30 @@ static COMM_MGR_SRV_ERR __comm_mgr_srv_uds_msg_action(COMM_MGR_SRV_UDS_MSG *uds_
     return COMM_MGR_SRV_SUCCESS;
 }
 
-
-
 // This function will also allocate memory. So remember to free() it
-// If datalen or arg_size is 0, then the encoding assumes that, its already been allocated somewhere
-static COMM_MGR_SRV_UDS_MSG* __comm_mgr_srv_uds_msg_encode(char *data, uint32_t datalen, void *arg, uint32_t arg_size) {
-    if ((data == NULL) && (arg == NULL)) { // Both cannot be NULL
+static COMM_MGR_SRV_UDS_MSG* __comm_mgr_srv_uds_msg_create(void *msg, uint32_t server_fd) {
+    if (msg == NULL) {
         return NULL;
     }
 
     COMM_MGR_SRV_UDS_MSG *uds_msg = (COMM_MGR_SRV_UDS_MSG*)malloc(sizeof(COMM_MGR_SRV_UDS_MSG));
-    
-    uds_msg->magic = UDS_MASTER_MSG_MAGIC_NUM;
-    uds_msg->action = UDS_MASTER_MSG_ACTION_PROCESS; // Default action
+    if(uds_msg == NULL) {
+        return NULL;
+    }
 
-    if (data != NULL) {
-        uds_msg->uds_datalen = datalen;
-        if (datalen > 0) {
-            uds_msg->uds_data = (char *)malloc(sizeof(char) * datalen);
-            memcpy(uds_msg->uds_data, data, sizeof(char) * datalen);
-        } else {
-            uds_msg->uds_data = data; // data is already allocated
-        }
-    }
-    
-    if(arg != NULL) {
-        uds_msg->arg_size = arg_size;
-        if (arg_size > 0) {
-            uds_msg->arg = (void *)malloc(arg_size);
-            memcpy(uds_msg->arg, arg, arg_size);
-        } else {
-            uds_msg->arg = arg;
-        }
-    }
+    uds_msg->action = UDS_MASTER_MSG_ACTION_PROCESS; // Default action
+    uds_msg->msg = msg; // Copy the communication manager message to the uds msg
+    uds_msg->server_fd = server_fd;
 
     return uds_msg;
 }
 
-static COMM_MGR_SRV_ERR __comm_mgr_srv_uds_msg_decode(COMM_MGR_SRV_UDS_MSG *uds_msg, char **data, uint32_t *datalen,
-                                          void **arg) {
-    if(uds_msg == NULL) {        
-        return COMM_MGR_SRV_UDS_BAD_PACKET;
-    }
-    // Check for the validity of the UDS MSG    
-    if(uds_msg->magic != UDS_MASTER_MSG_MAGIC_NUM) {
-        return COMM_MGR_SRV_UDS_BAD_PACKET;
-    }
-   
-    if (data != NULL) { 
-        *data = uds_msg->uds_data;
-        *datalen = uds_msg->uds_datalen;
-    }
-    if (arg != NULL) {
-        *arg = uds_msg->arg;
-    }
-    return COMM_MGR_SRV_SUCCESS;
-}
-
-// Free everything even if not allocated during UDS encode
 static void __comm_mgr_srv_uds_msg_free(COMM_MGR_SRV_UDS_MSG *uds_msg) {
     if(uds_msg == NULL) {
         return;
     }
 
-    if(uds_msg->uds_data != NULL) {
-        free(uds_msg->uds_data);
-    }
-    uds_msg->uds_datalen = 0;
-    
-    if(uds_msg->arg != NULL) {
-        free(uds_msg->arg);
-    }
-    uds_msg->arg_size = 0;
-
+    comm_mgr_destroy_msg(uds_msg->msg);
     free(uds_msg);
 }
 

@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <pthread.h>
 
 #include "smarthome_essentials.h"
 #include "logging.h"
@@ -37,6 +38,27 @@ typedef uint32_t UTILS_DS_ID;
 #define UTILS_DS_GET_SUBTYPE(id)    ((id & UTILS_DS_SUB_TYPE_MASK) >> UTILS_DS_SUB_TYPE_SHIFT)
 #define UTILS_DS_GET_ID(id)         ((id & UTILS_DS_ID_MASK) >> UTILS_DS_ID_SHIFT)
 
+#define UTILS_DS_LOCK_CREATE(qmeta)  do {\
+                                        qmeta->lock.isProtected = TRUE;\
+                                        pthread_mutex_init(&(qmeta->lock.__lock), NULL);\
+                                     } while(0)
+
+#define UTILS_DS_CHECK_LOCK(qmeta)  do {\
+                                        if(qmeta->lock.isProtected) {\
+                                            pthread_mutex_lock(&(qmeta->lock.__lock));\
+                                        }\
+                                    } while(0)                                        
+
+#define UTILS_DS_CHECK_UNLOCK(qmeta)  do {\
+                                            if(qmeta->lock.isProtected) {\
+                                                pthread_mutex_unlock(&(qmeta->lock.__lock));\
+                                            }\
+                                        } while(0)                                        
+#define UTILS_DS_LOCK_DESTROY(qmeta)  do {\
+                                            if(qmeta->lock.isProtected) {\
+                                                pthread_mutex_destroy(&qmeta->lock.__lock);\
+                                            }\
+                                        } while(0)
 typedef enum {
     UTILS_DS_QUEUE = 0x1,
     UTILS_DS_LIST = 0x2,
@@ -64,17 +86,24 @@ typedef struct {
     uint32_t size;
     boolean isPriority; // Priority queues (All the above types are supported)
     uint8_t numPriorities; // Number of priorities. Applicable only if isPriority == 1
+    boolean isProtected; // Library will take care of synchronization
 } UTILS_QUEUE;
 
 /*******************************************************************************/
 /*                  Internal Data structures                                   */
 /*******************************************************************************/
 typedef struct {
+    boolean isProtected;
+    pthread_mutex_t __lock;
+} __UTILS_QUEUE_LOCK;
+
+typedef struct {
     uint32_t front;
     uint32_t rear;
     uint32_t currsize;
     uint32_t capacity;
     void **data;
+    __UTILS_QUEUE_LOCK lock;
 } __UTILS_QUEUE_META;
 
 

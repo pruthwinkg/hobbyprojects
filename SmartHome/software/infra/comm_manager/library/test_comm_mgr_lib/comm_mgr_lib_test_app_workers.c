@@ -17,6 +17,8 @@ UTILS_TASK_HANDLER comm_mgr_test_app_workers[] = {
         //.eventEnable = TRUE,
 	//.reg_event_cb = comm_mgr_test_app_process_comm_events,
     },
+
+    {
      /* 
         Description : This task is dedicated to handle communication
 		for this test app

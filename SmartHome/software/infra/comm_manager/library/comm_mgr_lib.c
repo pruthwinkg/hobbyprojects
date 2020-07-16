@@ -104,7 +104,7 @@ COMM_MGR_LIB_CLIENT_ID comm_mgr_lib_create_client(COMM_MGR_LIB_CLIENT *client) {
     }
 
     __comm_mgr_lib_clients[id].clientAf = client->clientAf;
-    __comm_mgr_lib_clients[id].advanced_en = client->advanced_en;
+    __comm_mgr_lib_clients[id].ancillary = client->ancillary;
     __comm_mgr_lib_clients[id].server = client->server;
     __comm_mgr_lib_clients[id].portNum = client->portNum;
 
@@ -114,19 +114,14 @@ COMM_MGR_LIB_CLIENT_ID comm_mgr_lib_create_client(COMM_MGR_LIB_CLIENT *client) {
 
     switch(__comm_mgr_lib_clients[id].clientAf) {
         case COMM_MGR_LIB_IPC_AF_UNIX_SOCK_STREAM:
-            {
-                if(client->uds_file == NULL) {
-                    COMM_MGR_LIB_ERROR("UDS file unspecified");
-                    goto cleanup;
-                }
-                
+            {                
                 if ( (fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
                     COMM_MGR_LIB_ERROR("socket error");
                     goto cleanup;
                 }
                 memset(&un_addr, 0, sizeof(un_addr));
                 un_addr.sun_family = AF_UNIX;
-                if(client->advanced_en)
+                if(client->ancillary) {
                     strcpy(un_addr.sun_path, ANC_SOCKET_FILE_PATH);
                 } else {
                     strcpy(un_addr.sun_path, SOCKET_FILE_PATH);
@@ -388,6 +383,9 @@ COMM_MGR_LIB_ERR comm_mgr_lib_send_ack(COMM_MGR_LIB_CLIENT_ID id, uint16_t dst_u
 
     The application should keep calling this function to get the data depending
     on COMM_MGR_LIB_EVENT_FLAGS
+
+    Note : It is the responsibility of the application to free the comm_msg
+    dequed once it has used the message.
 */
 COMM_MGR_MSG* comm_mgr_lib_recv_data(COMM_MGR_LIB_CLIENT_ID id) {
     uint8_t cid = COMM_MGR_LIB_GET_CLIENT_ID(id);
@@ -431,6 +429,13 @@ uint8_t comm_mgr_lib_get_status(uint8_t cid, COMM_MGR_LIB_STATUS_GRP grp) {
     return status;
 }
 
+void comm_mgr_lib_free_msg(COMM_MGR_MSG *msg) {
+    if(msg == NULL) {
+        return;
+    }
+    comm_mgr_destroy_msg(msg); 
+}
+
 /******************************************************************************
                             Internal Functions
 ******************************************************************************/
@@ -472,29 +477,26 @@ static COMM_MGR_LIB_ERR comm_mgr_set_non_blocking_io(int socket_fd) {
     For data/ack packets, the apps can register for events or can keep polling the 
     USER_DSID which will be supplied by the apps to the lib
 */
-static COMM_MGR_LIB_ERR  __comm_mgr_lib_receive_packets(COMM_MGR_LIB_CLIENT_ID id, char *msg, uint16_t len) {
-	COMM_MGR_MSG *comm_mgr_msg;
+static COMM_MGR_LIB_ERR  __comm_mgr_lib_receive_packets(COMM_MGR_LIB_CLIENT_ID id, COMM_MGR_MSG *msg) {
     uint8_t cid = COMM_MGR_LIB_GET_CLIENT_ID(id); 
 
-	comm_mgr_msg = comm_mgr_get_msg(msg, len);
-
-    if (comm_mgr_msg == NULL) {
+    if (msg == NULL) {
         COMM_MGR_LIB_ERROR("Received bad packet from Communication Manager");
         return COMM_MGR_LIB_BAD_PACKET;
     }
 
     COMM_MGR_LIB_DEBUG("Received msg_type [%d], submsg_type [%d]", 
-                    comm_mgr_msg->hdr.msg_type, comm_mgr_msg->hdr.submsg_type);
+                        msg->hdr.msg_type, msg->hdr.submsg_type);
 
-    switch(comm_mgr_msg->hdr.msg_type) {
+    switch(msg->hdr.msg_type) {
         case COMM_MGR_MSG_PROTOCOL:
-            __comm_mgr_lib_protocol_handler(&__comm_mgr_lib_clients[cid], comm_mgr_msg);
+            __comm_mgr_lib_protocol_handler(&__comm_mgr_lib_clients[cid], msg);
             break;
         case COMM_MGR_MSG_ACK:
-            __comm_mgr_lib_ack_handler(&__comm_mgr_lib_clients[cid], comm_mgr_msg);
+            __comm_mgr_lib_ack_handler(&__comm_mgr_lib_clients[cid], msg);
             break;
         case COMM_MGR_MSG_DATA:
-            __comm_mgr_lib_data_handler(&__comm_mgr_lib_clients[cid], comm_mgr_msg);
+            __comm_mgr_lib_data_handler(&__comm_mgr_lib_clients[cid], msg);
             break;
         default:
             return COMM_MGR_LIB_BAD_PACKET;
@@ -800,6 +802,9 @@ COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_discovery_start(COMM_MGR_LIB_CLIENT *cl
     memcpy(&payload[1], &msg->payload[10], sizeof(uint16_t));
     COMM_MGR_LIB_DEBUG("Payload[6] in Discovery message = %d\n", payload[1]);
 
+    // Drop the msg received since we done using it
+    comm_mgr_lib_free_msg(msg);
+
     //Create a new protocol comm msg with same state and respond with apps UID
     if(__comm_mgr_lib_send_protocol(client, COMM_MGR_SUBMSG_DISCOVERY, 
                                    (char *)payload, sizeof(payload)) != COMM_MGR_LIB_SUCCESS) {
@@ -814,10 +819,14 @@ COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_discovery_start(COMM_MGR_LIB_CLIENT *cl
 
 send_nack:
     // We need ask the Communication Manager to send the discovery packet again. Send NACK
-     if(comm_mgr_lib_send_ack(client->__clientID, SYS_MGR_SYSTEM_UID_COMM_MANAGER, 
+    if(comm_mgr_lib_send_ack(client->__clientID, SYS_MGR_SYSTEM_UID_COMM_MANAGER, 
                 COMM_MGR_SUBMSG_PROTO_NACK) != COMM_MGR_LIB_SUCCESS) {
         COMM_MGR_LIB_ERROR("Failed to send NACK PROTO packet to Communication Manager");
     }
+
+    // Drop the msg received since we done using it 
+    comm_mgr_lib_free_msg(msg); 
+
     return COMM_MGR_LIB_PROTO_BAD_PACKET;
 }
 
@@ -844,6 +853,9 @@ COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_discovery_done(COMM_MGR_LIB_CLIENT *cli
     // Move the current state of the Client to Data transfer ready
     client->client_ptr->__proto_state = COMM_MGR_PROTO_DATATRANSFER_READY;
 
+    // Drop the msg received since we done using it
+    comm_mgr_lib_free_msg(msg); 
+
     return COMM_MGR_LIB_SUCCESS;
 send_nack:
     // We need ask the Communication Manager to send the discovery ACK packet again. Send NACK
@@ -851,6 +863,10 @@ send_nack:
                 COMM_MGR_SUBMSG_PROTO_NACK) != COMM_MGR_LIB_SUCCESS) {
         COMM_MGR_LIB_ERROR("Failed to send NACK PROTO packet to Communication Manager");
     }
+    
+    // Drop the msg received since we done using it
+    comm_mgr_lib_free_msg(msg);
+
     return COMM_MGR_LIB_ACK_BAD_PACKET;
 }
 
@@ -906,6 +922,9 @@ COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_learning(COMM_MGR_LIB_CLIENT *client,
     COMM_MGR_LIB_DEBUG("Received the Learning message with Action [%d], Dest UID [%d]",
                                                                     action, dest_uid);
 
+    // Drop the msg received since we done using it
+    comm_mgr_lib_free_msg(msg);
+
     return COMM_MGR_LIB_SUCCESS;
 
 send_nack:
@@ -914,6 +933,10 @@ send_nack:
                 COMM_MGR_SUBMSG_PROTO_NACK) != COMM_MGR_LIB_SUCCESS) {
         COMM_MGR_LIB_ERROR("Failed to send NACK PROTO packet to Communication Manager");
     }
+
+    // Drop the msg received since we done using it
+    comm_mgr_lib_free_msg(msg);
+
     return COMM_MGR_LIB_PROTO_BAD_PACKET;
 }
 
@@ -1061,7 +1084,6 @@ static COMM_MGR_LIB_ERR __comm_mgr_lib_server_communicator_with_epoll(COMM_MGR_L
     return COMM_MGR_LIB_SUCCESS;
 }
 
-
 /*
     This function uses select based event handling mechanism.
 
@@ -1082,12 +1104,12 @@ static COMM_MGR_LIB_ERR __comm_mgr_lib_server_communicator_with_select(COMM_MGR_
     struct timeval  timeout;
     int max_sd, rc = 0;
     boolean end_lib = FALSE;
-    char recv_buffer[8096];
-    int recv_count = 0, send_count = 0;
-    COMM_MGR_MSG *msg;
-    uint32_t comm_msg_size = 0;
+    COMM_MGR_MSG *msg = NULL;
     uint32_t default_select_timeout = COMM_MGR_LIB_DEFAULT_SELECT_TIMEOUT;
-    char datastream[COMM_MGR_PACKET_MAX_SIZE];
+    
+    COMM_MGR_MSG **recv_msg = NULL;
+	uint8_t num_recv_msgs = 0;
+    COMM_MGR_CMN_ERR cmn_rc = COMM_MGR_CMN_SUCCESS;
 
     if(cid > COMM_MGR_LIB_MAX_CLIENTS) {
         COMM_MGR_LIB_ERROR("Invalid client");
@@ -1152,22 +1174,32 @@ static COMM_MGR_LIB_ERR __comm_mgr_lib_server_communicator_with_select(COMM_MGR_
         // Now check if the client FD is set
         if (FD_ISSET(__comm_mgr_lib_clients[cid].client_ptr->__fd, working_read_fd)) {
             do {
-                recv_count = recv(__comm_mgr_lib_clients[cid].client_ptr->__fd, 
-                                                            recv_buffer, sizeof(recv_buffer), MSG_DONTWAIT);
-                if (recv_count < 0) {
+                if(__comm_mgr_lib_clients[cid].ancillary == FALSE) {
+                    cmn_rc = comm_mgr_recv(__comm_mgr_lib_clients[cid].client_ptr->__fd, COMM_MGR_FLAG_MODE_NORMAL, &recv_msg, &num_recv_msgs);
+                } else {
+                    cmn_rc = comm_mgr_recv(__comm_mgr_lib_clients[cid].client_ptr->__fd, COMM_MGR_FLAG_MODE_FD, &recv_msg, &num_recv_msgs);
+                }
+
+                if (cmn_rc == COMM_MGR_CMN_FAILURE) {
                     if (errno != EWOULDBLOCK) {
                             COMM_MGR_LIB_ERROR("recv() failed");
                             goto cleanup_and_exit;
                     }
                     break;
                 }
-                if(recv_count == 0) {
+                if(cmn_rc == COMM_MGR_CMN_PEER_DOWN) {
                     COMM_MGR_LIB_ERROR("The Communication Manager Server has shutdown. Exiting");
                     goto cleanup_and_exit;
+                } else if (cmn_rc != COMM_MGR_CMN_SUCCESS) { // Invalid args etc
+                    COMM_MGR_LIB_ERROR("Unknown receive failure");
+                    break;
                 }
-                // Enqueue the received data to proto/data DSID. 
-                __comm_mgr_lib_receive_packets(id, recv_buffer, recv_count);
-            } while(recv_count > 0);	
+
+                // Enqueue the received data to proto/data DSID.
+				for (uint8_t i = 0; i < num_recv_msgs; i++) { 
+                	__comm_mgr_lib_receive_packets(id, recv_msg[i]);
+				}
+            } while(cmn_rc == COMM_MGR_CMN_SUCCESS);	
         }
 
         // Check if the FD is writable
@@ -1189,14 +1221,14 @@ static COMM_MGR_LIB_ERR __comm_mgr_lib_server_communicator_with_select(COMM_MGR_
                     FD_ZERO(working_write_fd);
                     break;
                 }
-
-                comm_msg_size = COMM_MGR_MSG_SIZE(msg);
-                memset(datastream, 0, sizeof(datastream));
-                memcpy(datastream, msg, sizeof(COMM_MGR_MSG_HDR));
-                memcpy(datastream + sizeof(COMM_MGR_MSG_HDR), msg->payload, msg->hdr.payloadSize);
-
-                send_count = send(__comm_mgr_lib_clients[cid].client_ptr->__fd, datastream, comm_msg_size, 0);
-                if (send_count < 0) {
+                
+                if(__comm_mgr_lib_clients[cid].ancillary == FALSE) {
+                    cmn_rc = comm_mgr_send(__comm_mgr_lib_clients[cid].client_ptr->__fd, COMM_MGR_FLAG_MODE_NORMAL, msg);
+                } else {
+                    cmn_rc = comm_mgr_send(__comm_mgr_lib_clients[cid].client_ptr->__fd, COMM_MGR_FLAG_MODE_FD, msg); 
+                }
+                
+                if (cmn_rc == COMM_MGR_CMN_FAILURE) {
                     if (errno == EAGAIN || errno == EWOULDBLOCK) {
                         COMM_MGR_LIB_TRACE("Communication Manager is not ready right now, try again later");
                         break; // Its okay. But should we enqueue the msg back to queue to try again later
@@ -1204,16 +1236,19 @@ static COMM_MGR_LIB_ERR __comm_mgr_lib_server_communicator_with_select(COMM_MGR_
                         COMM_MGR_LIB_ERROR("Error in sending");
                         break; // This is very bad case. Handle it
                     }
-                } else if(send_count == 0) {
+                } else if(cmn_rc == COMM_MGR_CMN_PEER_DOWN) {
                     COMM_MGR_LIB_TRACE("Communication Manager cannot accept data right now, try again later");
                     break; // Its okay. But should we enqueue the msg back to queue to try again later
+                } else if (cmn_rc != COMM_MGR_CMN_SUCCESS) { // Invalid args etc
+                    COMM_MGR_LIB_ERROR("Unknown send failure");
+                    break;
                 }
 
-                if(send_count == comm_msg_size) {
-                    COMM_MGR_LIB_DEBUG("Sent the message, type [%d], subtype [%d], size [%d] to Communication Manager successfully",
-                                            msg->hdr.msg_type, msg->hdr.submsg_type, comm_msg_size);
+                if(cmn_rc == COMM_MGR_CMN_SUCCESS) {
+                    COMM_MGR_LIB_DEBUG("Sent the message, type [%d], subtype [%d] to Communication Manager successfully",
+                                            msg->hdr.msg_type, msg->hdr.submsg_type);
                 }
-            } while(send_count > 0);
+            } while(cmn_rc == COMM_MGR_CMN_SUCCESS);
         }
 
         // Update the library status periodically
@@ -1256,160 +1291,5 @@ static COMM_MGR_LIB_ERR __comm_mgr_lib_update_status(uint8_t cid, COMM_MGR_LIB_S
             return COMM_MGR_LIB_UNKNOWN_STATUS_GRP;
     }
     return COMM_MGR_LIB_SUCCESS;
-}
-
-/*
-    This is a new function added to the arsenal of the communication manager library. This function is
-    capable of sending ancillary control data along with the regular user data as well.
-
-    This function can also send multiple buffers
-
-    It can be used to send array of file descriptors, credentials etc
-
-    Refer : https://www.ibm.com/support/knowledgecenter/ssw_ibm_i_72/apis/sendms.htm
-
-
-    Note: A software limit is put on this function for how many scatter/gather array (iov) can be used. And also
-    a limit is put for number of file descriptors that can be sent
-*/
-static COMM_MGR_LIB_ERR __comm_mgr_lib_send_with_ancillary_msg(int fd,
-                                                              void **ptr, size_t *nbytes, uint8_t niov,
-                                                              int *sendfds, uint8_t num_sendfds) {
-    struct msghdr   msg;
-    struct iovec    iov[niov];
-    struct cmsghdr  *cmptr;
-    COMM_MGR_LIB_ERR rc = COMM_MGR_LIB_SUCCESS;
-    ssize_t sent_bytes = 0;
-
-    if(comm_mgr_lib_auxillary_send_en == FALSE) {
-        COMM_MGR_LIB_ERROR("Auxillary send option is not enabled");
-        return COMM_MGR_LIB_SEND_ERR;
-    }
-
-    if(fd < 0) {
-        COMM_MGR_LIB_ERROR("Invalid argument (Bad socket)");
-        return COMM_MGR_LIB_INVALID_ARG;
-    }
-
-    if((num_sendfds > 0) && (sendfds == NULL)) {
-        COMM_MGR_LIB_ERROR("Invalid argument (sendfds is NULL)");
-        return COMM_MGR_LIB_INVALID_ARG;
-    }
-
-    if(num_sendfds > COMM_MGR_LIB_MAX_ANCILLARY_FD) {
-        COMM_MGR_LIB_ERROR("Max number of file descriptors supported is %d. Trying to send %d",
-                        COMM_MGR_LIB_MAX_ANCILLARY_FD, num_sendfds);
-        return COMM_MGR_LIB_SEND_ERR;
-    }
-
-    if(niov > COMM_MGR_LIB_MAX_ANCILLARY_IOV) {
-        COMM_MGR_LIB_ERROR("Max number of IOV supported is %d. Trying to send %d",
-                        COMM_MGR_LIB_MAX_ANCILLARY_IOV, niov);
-        return COMM_MGR_LIB_SEND_ERR;
-    }
-
-    if((niov > 0) && (nbytes == NULL)) {
-        COMM_MGR_LIB_ERROR("Invalid argument (nbytes is NULL)");
-        return COMM_MGR_LIB_INVALID_ARG;
-    }
-
-    // Sanitize the whole niov
-    if(niov > 0) {
-        for (uint8_t i = 0; i < niov; i++) {
-            if(nbytes[i] == 0) {
-                COMM_MGR_LIB_ERROR("Invalid argument. nbytes[%d] = 0", i);
-                return COMM_MGR_LIB_INVALID_ARG;
-            }
-            if(ptr[i] == NULL) {
-                COMM_MGR_LIB_ERROR("Invalid argument. ptr[%d] = NULL", i);
-                return COMM_MGR_LIB_INVALID_ARG;
-            }
-        }
-    }
-
-    memset(&msg, 0, sizeof(msg));
-  
-    if (num_sendfds > 0) {
-        char control[CMSG_SPACE(sizeof(int) * num_sendfds)];
-
-        msg.msg_control = control;
-        msg.msg_controllen = sizeof(control);
-
-        cmptr = CMSG_FIRSTHDR(&msg);
-        cmptr->cmsg_level = SOL_SOCKET;
-        cmptr->cmsg_type = SCM_RIGHTS;
-        cmptr->cmsg_len = CMSG_LEN(sizeof(int) * num_sendfds);
-        *((int *) CMSG_DATA(cmptr)) = sendfd;
-        memcpy(CMSG_DATA(cmsg), sendfds, sizeof(int) * num_sendfds);
-    }
-
-    // Support only connected sockets
-    msg.msg_name = NULL;
-    msg.msg_namelen = 0;
-
-    if(niov > 0) {
-        for (uint8_t i = 0; i < niov; i++) {
-            iov[i].iov_base = ptr[i];
-            iov[i].iov_len = nbytes[i];
-        }
-    }
-
-    msg.msg_iov = iov;
-    msg.msg_iovlen = niov;
-
-    sent_bytes = sendmsg(fd, &msg, 0);
-    if(sent_bytes < 0) {
-        COMM_MGR_LIB_ERROR("Failed to send data");
-        return COMM_MGR_LIB_SEND_ERR; 
-    }
-    return COMM_MGR_LIB_SUCCESS;
-}
-
-static COMM_MGR_LIB_ERR __comm_mgr_lib_recv_with_ancillary_msg(int fd,
-															  void **ptr, size_t *nbytes, uint8_t *niov,
-														      int *recvfds, uint8_t *num_recvfds) {
-	struct msghdr   msg;
-    struct iovec    iov[1];
-    ssize_t         recv_bytes;  
-    struct cmsghdr  *cmptr;
-    char control[CMSG_SPACE(sizeof(int))];
-    uint8_t num_recvfds_tmp = 0;
-   
-    memset(&msg, 0, sizeof(msg));
-    
-    msg.msg_control = control;
-    msg.msg_controllen = sizeof(control);
-   
-	// Support only connected sockets 
-    msg.msg_name = NULL;
-    msg.msg_namelen = 0;
-    
-    iov[0].iov_base = ptr;
-    iov[0].iov_len = nbytes;
-    msg.msg_iov = iov;
-    msg.msg_iovlen = 1;
-    
-    if ((recv_bytes = recvmsg(fd, &msg, 0)) <= 0) {
-		COMM_MGR_LIB_ERROR("Failed to recv data");
-        return COMM_MGR_LIB_RECV_ERR;
-	}
-   
-    // Some control data is available
-    if(msg.msg_controllen > 0) {
-        cmptr = CMSG_FIRSTHDR(&msg);
-        while((cmptr != NULL)) {
-            if(cmptr->cmsg_len == CMSG_LEN(sizeof(int))) {
-                if ((cmptr->cmsg_level == SOL_SOCKET) && (cmptr->cmsg_type == SCM_RIGHTS)) {
-                    recvfds[num_recvfds_tmp] = *((int *) CMSG_DATA(cmptr));
-                    num_recvfds_tmp++;
-                }
-            }
-
-            cmptr = CMSG_NXTHDR(&msg, cmptr);                
-        }
-        *num_recvfds = num_recvfds_tmp;
-    }
-
-	return COMM_MGR_LIB_SUCCESS;
 }
 

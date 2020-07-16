@@ -213,6 +213,11 @@ static int __utils_ds_queue_create_static(UTILS_DS_ID id, UTILS_QUEUE *queue) {
     qmeta->currsize = 0;
     qmeta->rear = 0;
     qmeta->capacity = queue->size;
+    qmeta->lock.isProtected = FALSE;
+
+    if(queue->isProtected == TRUE) {
+        UTILS_DS_LOCK_CREATE(qmeta);
+    }
 
     // Create an array of void poiners for data storage
     qmeta->data = malloc(sizeof(void *) * queue->size);
@@ -226,16 +231,24 @@ static int __utils_ds_queue_create_static(UTILS_DS_ID id, UTILS_QUEUE *queue) {
 static int __utils_ds_queue_enqueue_static(UTILS_DS_ID id, void *data) {
     __UTILS_QUEUE_META *qmeta = utils_ds_metadata[UTILS_DS_GET_ID(id)];
 
+    UTILS_DS_CHECK_LOCK(qmeta);
+
     if(__utils_ds_queue_isfull(id)) return -1;
 
     // Data will enqueued at 'rear' pointer
     qmeta->data[qmeta->rear] = data;
     qmeta->rear += 1;
     qmeta->currsize += 1;
+
+    UTILS_DS_CHECK_UNLOCK(qmeta);
+
+    return 0;
 }
 
 static void* __utils_ds_queue_dequeue_static(UTILS_DS_ID id) {
     __UTILS_QUEUE_META *qmeta = utils_ds_metadata[UTILS_DS_GET_ID(id)];
+
+    UTILS_DS_CHECK_LOCK(qmeta);
 
     if(__utils_ds_queue_isempty(id)) return NULL;
 
@@ -245,6 +258,8 @@ static void* __utils_ds_queue_dequeue_static(UTILS_DS_ID id) {
     // Data will dequeued at 'front' pointer
     void *data = qmeta->data[qmeta->front];
     qmeta->front += 1;
+
+    UTILS_DS_CHECK_UNLOCK(qmeta);
 
     return data;
 }
@@ -260,6 +275,8 @@ static void __utils_ds_queue_destroy_static(UTILS_DS_ID id, boolean delete_data)
             }
         }
     }
+
+    UTILS_DS_LOCK_DESTROY(qmeta);
 
     // Start deleting meta for this id
     utils_ds_metadata[UTILS_DS_GET_ID(id)] = NULL;
@@ -280,6 +297,11 @@ static int __utils_ds_queue_create_circular(UTILS_DS_ID id, UTILS_QUEUE *queue) 
     qmeta->currsize = 0;
     qmeta->rear = queue->size - 1;
     qmeta->capacity = queue->size;
+    qmeta->lock.isProtected = FALSE;
+
+    if(queue->isProtected == TRUE) {
+        UTILS_DS_LOCK_CREATE(qmeta);
+    }
 
     // Create an array of void poiners for data storage
     qmeta->data = malloc(sizeof(void *) * queue->size);
@@ -293,17 +315,24 @@ static int __utils_ds_queue_create_circular(UTILS_DS_ID id, UTILS_QUEUE *queue) 
 static int __utils_ds_queue_enqueue_circular(UTILS_DS_ID id, void *data) {
     __UTILS_QUEUE_META *qmeta = utils_ds_metadata[UTILS_DS_GET_ID(id)];
 
+    UTILS_DS_CHECK_LOCK(qmeta);
+
     if(__utils_ds_queue_isfull(id)) return -1;
 
     // Data will enqueued at 'rear' pointer
     qmeta->rear = (qmeta->rear + 1)%qmeta->capacity;
     qmeta->data[qmeta->rear] = data;
     qmeta->currsize += 1;
+
+    UTILS_DS_CHECK_UNLOCK(qmeta);    
+
     return 0;
 }
 
 static void* __utils_ds_queue_dequeue_circular(UTILS_DS_ID id) {
     __UTILS_QUEUE_META *qmeta = utils_ds_metadata[UTILS_DS_GET_ID(id)];
+
+    UTILS_DS_CHECK_LOCK(qmeta);    
 
     if(__utils_ds_queue_isempty(id)) return NULL;
 
@@ -311,6 +340,8 @@ static void* __utils_ds_queue_dequeue_circular(UTILS_DS_ID id) {
     void *data = qmeta->data[qmeta->front];    
     qmeta->front = (qmeta->front + 1)%qmeta->capacity;
     qmeta->currsize -= 1;
+
+    UTILS_DS_CHECK_UNLOCK(qmeta);
 
     return data;
 }
@@ -327,6 +358,8 @@ static void __utils_ds_queue_destroy_circular(UTILS_DS_ID id, boolean delete_dat
         }
     }
 
+    UTILS_DS_LOCK_DESTROY(qmeta);
+
     // Start deleting meta for this id
     utils_ds_metadata[UTILS_DS_GET_ID(id)] = NULL;
     free(qmeta->data);
@@ -338,7 +371,7 @@ static void __utils_ds_queue_destroy_circular(UTILS_DS_ID id, boolean delete_dat
 static boolean __utils_ds_queue_isfull(UTILS_DS_ID id) {
     __UTILS_QUEUE_META *qmeta = utils_ds_metadata[UTILS_DS_GET_ID(id)];
 
-    if(qmeta->currsize == qmeta->capacity) { return TRUE; }
+    if(qmeta->currsize >= qmeta->capacity) { return TRUE; }
     return FALSE;
 }
 

@@ -27,10 +27,9 @@
 extern boolean comm_mgr_srv_initialized;
 extern UTILS_TASK_HANDLER comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_MAX];
 
-// The last argument (void *) can be used to send complex datastrcuture
-// If void *arg is used, then the corresponding dsid_cb should be able to
-// tyoecast to apprioate type for that DSID and use it.
-typedef COMM_MGR_SRV_ERR (*comm_mgr_srv_dsid_cb)(UTILS_DS_ID, char *, uint32_t, void *);
+// The last argument (void **) can be used to send array of complex datastrcuture
+// The corresponding dsid_cb should typecast to apprioate type for that DSID and use it.
+typedef COMM_MGR_SRV_ERR (*comm_mgr_srv_dsid_cb)(UTILS_DS_ID, void *arg1, void *arg2, void **arg);
 
 //extern char buffer[4096]; // // TODO :Make a sophesticated data structure
 
@@ -38,6 +37,7 @@ typedef COMM_MGR_SRV_ERR (*comm_mgr_srv_dsid_cb)(UTILS_DS_ID, char *, uint32_t, 
 typedef struct {
     COMM_MGR_SRV_IPC_AF masterAf;   /* In */
     const char *uds_file;           /* In (Only for UDS) */
+    boolean ancillary;              /* In */
     int portNum;                    /* In */
     boolean reuseaddr;              /* In */
     boolean nonblockingIO;          /* In */
@@ -59,6 +59,12 @@ typedef struct {
     COMM_MGR_MSG *msg;
 } COMM_MGR_SRV_MSG;
 
+
+typedef struct {
+    COMM_MGR_MSG **msg;
+    uint8_t num_msgs;
+    uint32_t server_fd;
+} COMM_MGR_SRV_RECV_MSG;
 
 /************************************************************************/
 /*                   Internal helper functions                          */

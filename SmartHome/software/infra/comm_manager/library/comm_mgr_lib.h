@@ -90,7 +90,7 @@ typedef struct {
 // Data structure to hold client properties
 typedef struct {
     COMM_MGR_LIB_IPC_AF clientAf;   /* In */
-    boolean advanced_en;            /* In */
+    boolean ancillary;              /* In */
     struct hostent server;          /* In */
     int portNum;                    /* In */
     COMM_MGR_LIB_CLIENT_PROPERTY *property; /* In (Optional) If NULL, uses default */
@@ -148,8 +148,10 @@ COMM_MGR_LIB_ERR comm_mgr_lib_delete_client(COMM_MGR_LIB_CLIENT_ID id);
 COMM_MGR_LIB_ERR comm_mgr_lib_server_communicator(COMM_MGR_LIB_CLIENT_ID id);
 COMM_MGR_MSG* comm_mgr_lib_recv_data(COMM_MGR_LIB_CLIENT_ID id);
 COMM_MGR_LIB_ERR comm_mgr_lib_send_data(COMM_MGR_LIB_CLIENT_ID id, uint16_t dst_uid, char *msg, int len);
-COMM_MGR_LIB_ERR comm_mgr_lib_send_ack(COMM_MGR_LIB_CLIENT_ID id, uint16_t dst_uid, COMM_MGR_SUBMSG_TYPE submsg);                                        
+COMM_MGR_LIB_ERR comm_mgr_lib_send_ack(COMM_MGR_LIB_CLIENT_ID id, uint16_t dst_uid, COMM_MGR_SUBMSG_TYPE submsg);
+void comm_mgr_lib_free_msg(COMM_MGR_MSG *msg);
 uint8_t comm_mgr_lib_get_status(uint8_t cid, COMM_MGR_LIB_STATUS_GRP grp);
+
 
 /******************************************************************************/
 /*          Internal Functions                                                */
@@ -157,8 +159,7 @@ uint8_t comm_mgr_lib_get_status(uint8_t cid, COMM_MGR_LIB_STATUS_GRP grp);
 static uint16_t __comm_mgr_lib_get_free_client(void);
 static void __comm_mgr_lib_delete_client(COMM_MGR_LIB_CLIENT_ID id);
 static COMM_MGR_LIB_ERR comm_mgr_set_non_blocking_io(int socket_fd);
-static COMM_MGR_LIB_ERR  __comm_mgr_lib_receive_packets(COMM_MGR_LIB_CLIENT_ID id, 
-                                                char *buffer, uint16_t bufsize);
+static COMM_MGR_LIB_ERR __comm_mgr_lib_receive_packets(COMM_MGR_LIB_CLIENT_ID id, COMM_MGR_MSG *msg);
 static COMM_MGR_LIB_ERR __comm_mgr_lib_send_msg(COMM_MGR_LIB_CLIENT *client, COMM_MGR_MSG_HDR *hdr,
                                         char *msg, int len);
 static COMM_MGR_LIB_ERR __comm_mgr_lib_send_protocol(COMM_MGR_LIB_CLIENT *client, 

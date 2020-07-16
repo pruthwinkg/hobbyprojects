@@ -12,7 +12,7 @@
 #define SOCKET_FILE_PATH  		"/tmp/smarthome_server.socket"
 #define ANC_SOCKET_FILE_PATH  	"/tmp/smarthome_server.anc_socket"
 
-#define COMM_MGR_PACKET_MAX_SIZE    (4096) // bytes
+#define COMM_MGR_PACKET_MAX_SIZE    (64 * 1024 * 1024) // 64 Kbytes
 #define COMM_MGR_HDR_SIZE           (128)  // bytes
 #define COMM_MGR_MSG_MAX_SIZE       (COMM_MGR_PACKET_MAX_SIZE-COMM_MGR_HDR_SIZE)
 
@@ -21,9 +21,14 @@
 
 #define COMM_MGR_MSG_HDR_MAGIC      (0x1357)
 #define COMM_MGR_MSG_PROTOCOL_MAGIC (0xCAFE)
+#define COMM_MGR_MSG_ANC_HDR_MAGIC  (0x2468)
 // Communication Manager msg versions (For portability purpose)
 #define COMM_MGR_MSG_HDR_MAJOR_VER      (0)
 #define COMM_MGR_MSG_HDR_MINOR_VER      (1)
+
+#define COMM_MGR_MSG_ANC_HDR_MAJOR_VER      (0)
+#define COMM_MGR_MSG_ANC_HDR_MINOR_VER      (1)
+
 
 // Standard Protocol Payload sizes (In bytes)
 #define COMM_MGR_MSG_PROTOCOL_SRV_DISCOVERY_SIZE     (12) // Sent by Server to Client
@@ -38,13 +43,14 @@
 */
 #define COMM_MGR_USE_ANCILLARY_SEND      	(TRUE)    // By default enabled
 #define COMM_MGR_MAX_ANCILLARY_FD        	(2)    // Max number of file descriptors currently supported
-#define COMM_MGR_MAX_ANCILLARY_IOV       	(1)    // Max number of non-contagious buffers which needs to sent
-#define COMM_MGR_ANCILLARY_PROTO_SIZE	 	(2)    // Size of internal protocol buffer used in IOV[0]
+#define COMM_MGR_MAX_ANCILLARY_INTERNAL_IOV (3)	   // Number of internal IOVs used by Communication Manager
+#define COMM_MGR_MAX_ANCILLARY_USER_IOV     (1)    // Max number of non-contagious buffers which needs to sent
 #define COMM_MGR_MAX_ANCILLARY_RECV_BUFFER	(16 * 1024) // 16KB
 
+#define COMM_MGR_MAX_ANCILLARY_IOV_SIZE     (256) // 256 bytes
 #define COMM_MGR_MAX_NORMAL_MODE_RECV_BUFFER	(8 * 1024)
 
-typedef uint8_t COMM_MGR_FLAG
+typedef uint8_t COMM_MGR_FLAG;
 
 // These flags define the behaviour of comm_mgr_send/comm_mgr_recv functions
 #define COMM_MGR_FLAG_MODE_DEFAULT			(0)		 // Use a default behaviour. The function decides how to send
@@ -80,14 +86,21 @@ typedef struct {
 	uint32_t magic; // Unique number to safeguard/delimit pkts
 	uint8_t major_ver;
 	uint8_t minor_ver;
+	COMM_MGR_ANC_MSG_TYPE anc_msg_type;
 	uint8_t num_fd;
-	uint32_t *fds;
 	uint8_t num_vec;
+} COMM_MGR_ANC_MSG_HDR;
+
+typedef struct {
+	COMM_MGR_ANC_MSG_HDR hdr;
+	uint32_t *fds;
 	uint8_t *nPayloadSize;
 	char **payloads;
 } COMM_MGR_ANC_MSG;
 
+
 #define COMM_MGR_MSG_SIZE(msg)  (sizeof(COMM_MGR_MSG_HDR) + (msg->hdr.payloadSize * sizeof(char)))
+#define COMM_MGR_GET_ANC_MSG(msg)	((COMM_MGR_ANC_MSG *)msg->payload) // Payload is overrided
 
 /*********************************************************************************
                                 Public Functions
@@ -102,14 +115,17 @@ COMM_MGR_MSG* comm_mgr_get_msg(char *msg, uint16_t len);
 COMM_MGR_MSG* comm_mgr_get_next_msg(char *msg);
 void comm_mgr_print_msg_hdr(COMM_MGR_MSG *msg, char *buf, uint16_t len);
 
-int comm_mgr_ancillary_send();
-int comm_mgr_ancillary_recv();
+void comm_mgr_destroy_msg(COMM_MGR_MSG *msg);
+void comm_mgr_destroy_anc_msg(COMM_MGR_MSG *msg);
+COMM_MGR_CMN_ERR comm_mgr_send(int sock, COMM_MGR_FLAG flag, COMM_MGR_MSG *comm_msg);
+COMM_MGR_CMN_ERR comm_mgr_recv(int sock, COMM_MGR_FLAG flag, COMM_MGR_MSG **msg[], uint8_t *num_msgs);
 
-static int __comm_mgr_send_with_ancillary_msg(int fd,
-								 	 void **ptr, uint8_t *nbytes, uint8_t niov, 
-									 int *sendfds, uint8_t num_sendfds);
-static int __comm_mgr_recv_with_ancillary_msg(int fd,
-									 void **ptr, uint8_t *nbytes, uint8_t *niov,
-									 int *recvfds, uint8_t *num_recvfds);
+static COMM_MGR_CMN_ERR __comm_mgr_send_with_ancillary_msg(int fd,
+                                                           COMM_MGR_MSG_HDR *comm_hdr,
+                                                           COMM_MGR_ANC_MSG *anc_msg);
+static COMM_MGR_CMN_ERR __comm_mgr_recv_with_ancillary_msg(int fd,
+                                                           COMM_MGR_MSG_HDR *comm_hdr,
+                                                           COMM_MGR_ANC_MSG *anc_msg);
+static void comm_mgr_datastream_thread_init(void);
 
 #endif /* INCLUDE_COMM_MGR_CMN_H__ */ 

@@ -34,7 +34,7 @@ UTILS_TASK_HANDLER comm_mgr_srv_workers[] =
         Secondary UDS Master Instance task
     */
         .taskID = COMM_MGR_SRV_TASK_ID_SEC_UDS_REQ,
-        .handler = comm_mgr_srv_sec_uds_request_handler,
+        .handler = comm_mgr_srv_uds_request_handler,
         .attr = NULL,
         .arg = NULL,
         .eventEnable = FALSE,

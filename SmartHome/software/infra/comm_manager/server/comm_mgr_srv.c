@@ -56,9 +56,6 @@ UTILS_SHM_OBJ *sysmgr_shm_obj;
 uint16_t comm_mgr_reg_apps_num = 0; // Total number of valid registered apps
 COMM_MGR_SRV_REG_APPS *comm_mgr_reg_apps_list;
 
-char datastream[COMM_MGR_PACKET_MAX_SIZE]; // Used while sending data. Statically allocted to avoid frequent
-                                           // mallocs which can result in lot of fragmentation
-
 COMM_MGR_SRV_ERR comm_mgr_srv_init() {
 	if (comm_mgr_srv_initialized == TRUE) {
 		COMM_MGR_SRV_ERROR("comm_mgr_srv already initialized");
@@ -262,8 +259,10 @@ COMM_MGR_SRV_ERR comm_mgr_srv_accept_clients(uint16_t masterID) {
 	int i = 0, rc, close_conn, len;
 	int masterIndex = COMM_MGR_SRV_GET_MASTER_INDEX(masterID);
     COMM_MGR_SRV_MASTER *master = &comm_mgr_srv_masters[masterIndex];
-
-	char buffer[4096]; // Delete it
+    COMM_MGR_CMN_ERR cmn_rc = COMM_MGR_CMN_SUCCESS;
+    COMM_MGR_MSG **comm_msg = NULL;
+    uint8_t comm_num_msgs = 0;
+    COMM_MGR_SRV_RECV_MSG comm_srv_rcv_msg;
 
 	if (master->__masterReady == FALSE) {
 		COMM_MGR_SRV_ERROR("Master ID [%d] not yet ready", masterID);
@@ -418,8 +417,13 @@ COMM_MGR_SRV_ERR comm_mgr_srv_accept_clients(uint16_t masterID) {
 						/* failure occurs, we will close the          */
 						/* connection.                                */
 						/**********************************************/
-						rc = recv(i, buffer, sizeof(buffer), 0);
-						if (rc < 0) {
+                        if(master->ancillary == FALSE) {
+                            cmn_rc = comm_mgr_recv(i, COMM_MGR_FLAG_MODE_NORMAL, &comm_msg, &comm_num_msgs);
+                        } else {
+                            cmn_rc = comm_mgr_recv(i, COMM_MGR_FLAG_MODE_FD, &comm_msg, &comm_num_msgs);
+                        }
+						//rc = recv(i, buffer, sizeof(buffer), 0);
+						if (cmn_rc == COMM_MGR_CMN_FAILURE) {
 							if (errno != EWOULDBLOCK) {
 								COMM_MGR_SRV_ERROR("recv() failed");
 								close_conn = TRUE;
@@ -431,7 +435,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_accept_clients(uint16_t masterID) {
 						/* Check to see if the connection has been    */
 						/* closed by the client                       */
 						/**********************************************/
-						if (rc == 0) {
+						if (cmn_rc == COMM_MGR_CMN_PEER_DOWN) {
 							COMM_MGR_SRV_TRACE("Connection closed");
 							close_conn = TRUE;
                             
@@ -441,7 +445,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_accept_clients(uint16_t masterID) {
                                 hk_job->event = COMM_MGR_SRV_HOUSEKEEP_EVENT_CLIENT_DOWN;
                                 hk_job->eventData = (uint32_t *)malloc(sizeof(uint32_t));
                                 *(uint32_t *)(hk_job->eventData) = i; // copy the server fd
-                                master->__dsid_cb[COMM_MGR_SRV_DSID_HOUSEKEEP](master->__DSID[COMM_MGR_SRV_DSID_HOUSEKEEP], NULL, 0, (void *)hk_job);
+                                master->__dsid_cb[COMM_MGR_SRV_DSID_HOUSEKEEP](master->__DSID[COMM_MGR_SRV_DSID_HOUSEKEEP], (void *)hk_job, NULL, NULL);
                             } else {
                                 COMM_MGR_SRV_ERROR("DSID [%s] Callback not set. Not sending the data to Master ID %d", 
                                                     DECODE_ENUM(COMM_MGR_SRV_DSID, COMM_MGR_SRV_DSID_HOUSEKEEP), master->__masterID);
@@ -451,12 +455,13 @@ COMM_MGR_SRV_ERR comm_mgr_srv_accept_clients(uint16_t masterID) {
 
 						/**********************************************/
 						/* Data was received                          */
-						/**********************************************/
-						len = rc;
-                       
-						//COMM_MGR_SRV_DEBUG("Data received : %s, len : %d", buffer, len);
+						/**********************************************/                       
                         if (master->__dsid_cb[COMM_MGR_SRV_DSID_RECV]) {
-                            master->__dsid_cb[COMM_MGR_SRV_DSID_RECV](master->__DSID[COMM_MGR_SRV_DSID_RECV], buffer, len, (void *)&i);
+                            printf("PRUTHWIN : Received data\n");
+                            comm_srv_rcv_msg.msg = comm_msg;
+                            comm_srv_rcv_msg.num_msgs = comm_num_msgs;
+                            comm_srv_rcv_msg.server_fd = i;
+                            master->__dsid_cb[COMM_MGR_SRV_DSID_RECV](master->__DSID[COMM_MGR_SRV_DSID_RECV], (void *)&comm_srv_rcv_msg, NULL, NULL);
                         } else {
                             COMM_MGR_SRV_ERROR("DSID [%s] Callback not set. Not sending the data to Master ID %d", 
                                                 DECODE_ENUM(COMM_MGR_SRV_DSID, COMM_MGR_SRV_DSID_RECV), master->__masterID);
@@ -510,7 +515,7 @@ cleanup_and_exit:
 *************************************************************************/
 COMM_MGR_SRV_ERR comm_mgr_srv_send_data(COMM_MGR_SRV_MASTER *master, 
                                         COMM_MGR_SRV_MSG *srv_msg) {
-    int rc = 0;
+    COMM_MGR_CMN_ERR rc = 0;
     if ((srv_msg == NULL) || (master == NULL) || (srv_msg->msg == NULL)) {
         COMM_MGR_SRV_ERROR("Received invalid argument");
         return COMM_MGR_SRV_INVALID_ARG;
@@ -520,19 +525,14 @@ COMM_MGR_SRV_ERR comm_mgr_srv_send_data(COMM_MGR_SRV_MASTER *master,
         COMM_MGR_SRV_ERROR("Server fd is 0 for UID [%d]. Aborting the send", srv_msg->msg->hdr.dst_uid);
     }
 
-    uint32_t len = 0;
-    len = sizeof(COMM_MGR_MSG_HDR) + (srv_msg->msg->hdr.payloadSize);
-    memset(datastream, 0, sizeof(datastream));
-    memcpy(datastream, srv_msg->msg, sizeof(COMM_MGR_MSG_HDR));
-    memcpy(datastream + sizeof(COMM_MGR_MSG_HDR), srv_msg->msg->payload, (srv_msg->msg->hdr.payloadSize));
-
-    if (srv_msg->msg->msg_type == COMM_MGR_MSG_ANCILLARY) {
-        rc = comm_mgr_send_with_ancillary_msg(srv_msg->server_fd, );
+    if (srv_msg->msg->hdr.msg_type == COMM_MGR_MSG_ANCILLARY) {
+        // For now only FD mode is allowed
+        rc = comm_mgr_send(srv_msg->server_fd, COMM_MGR_FLAG_MODE_FD, srv_msg->msg);
     } else {
-        rc = send(srv_msg->server_fd, datastream, len, 0);
-    }    
+        rc = comm_mgr_send(srv_msg->server_fd, COMM_MGR_FLAG_MODE_NORMAL, srv_msg->msg);
+    }
 
-    if (rc < 0) {
+    if (rc !=  COMM_MGR_CMN_SUCCESS) {
         COMM_MGR_SRV_ERROR("  send() failed");
         return COMM_MGR_SRV_SEND_ERR;
     }
@@ -672,12 +672,16 @@ int main() {
 
     // Create each master instance type. If multiple master instance types needs to be created
     // call create for each first
-    uint16_t uds_masterID[2] = {0, 0};
-    COMM_MGR_SRV_MASTER_INSTANCE uds_instances[2] = {COMM_MGR_SRV_MASTER_DEFAULT_UDS, 
-                                                     COMM_MGR_SRV_MASTER_SECONDARY_UDS};
-    ret = comm_mgr_srv_create_uds_master(uds_masterID, uds_instances, 2, TRUE); // Enable loadsharing
+    uint16_t uds_masterID[UDS_MASTER_NUM_OF_INSTANCES];
+    memset(uds_masterID, 0, sizeof(uds_masterID));
+    COMM_MGR_SRV_MASTER_INSTANCE uds_instances[UDS_MASTER_NUM_OF_INSTANCES];
+
+    uds_instances[0] = COMM_MGR_SRV_MASTER_DEFAULT_UDS;
+    //uds_instances[1] = COMM_MGR_SRV_MASTER_SECONDARY_UDS;
+
+    ret = comm_mgr_srv_create_uds_master(uds_masterID, uds_instances, UDS_MASTER_NUM_OF_INSTANCES, TRUE); // Enable loadsharing
     if (ret != COMM_MGR_SRV_SUCCESS) {
-        for (uint8_t i = 0; i < 2; i++) {
+        for (uint8_t i = 0; i < UDS_MASTER_NUM_OF_INSTANCES; i++) {
             __comm_mgr_srv_free_master_id(uds_masterID[i]);
         }
     }

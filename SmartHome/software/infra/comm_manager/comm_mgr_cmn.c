@@ -5,7 +5,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <pthread.h>
 #include "comm_mgr_cmn.h"
+
+boolean comm_mgr_auxillary_send_en = COMM_MGR_USE_ANCILLARY_SEND;
+
+static pthread_key_t datastream_key;
+static pthread_once_t datastream_init_done = PTHREAD_ONCE_INIT;
 
 /*
     This function creates a COMM_MGR_MSG with minimum must params. The rest
@@ -43,6 +51,75 @@ COMM_MGR_MSG* comm_mgr_create_msg(uint16_t src_uid, uint16_t dst_uid,
 
     return msg;
 }
+
+/*
+    This function creates a COMM_MGR_ANC_MSG with minimum must params. The rest
+    can be set the by the Master instance / Client apps optionally
+
+    We will override the payload pointer with the address of Ancillary Message
+
+*/
+COMM_MGR_MSG* comm_mgr_create_anc_msg(uint16_t src_uid, uint16_t dst_uid, COMM_MGR_ANC_MSG_TYPE anc_msg_type,
+                                      uint8_t num_vector, char **data, uint8_t *datalen,
+                                      uint8_t num_fds, int *fds) {
+
+    COMM_MGR_MSG_TYPE msg_type = COMM_MGR_MSG_ANCILLARY;
+
+    if(num_vector > 0) {
+        // Sanitize the whole vector
+        for (uint8_t i = 0; i < num_vector; i++) {
+            if(datalen[i] == 0) {
+                return NULL;
+            }
+            if(data[i] == NULL) {
+                return NULL;
+            }
+        }    
+    }
+
+    // Create a Communication Manager header with no payload
+    COMM_MGR_MSG *comm_msg = comm_mgr_create_msg(src_uid, dst_uid, msg_type, NULL, 0);
+    if(comm_msg == NULL) {
+        return NULL;
+    }
+
+
+    COMM_MGR_ANC_MSG *anc_msg = (COMM_MGR_ANC_MSG *)malloc(sizeof(COMM_MGR_ANC_MSG));
+    if (anc_msg == NULL) {
+        free(comm_msg);
+        return NULL;
+    }
+
+    // Override the payload field of Comm Msg with the Ancillary Message
+    comm_msg->payload = (char *)anc_msg;
+
+    memset(&anc_msg, 0, sizeof(COMM_MGR_ANC_MSG));
+    anc_msg->hdr.magic = COMM_MGR_MSG_ANC_HDR_MAGIC;
+    anc_msg->hdr.major_ver = COMM_MGR_MSG_ANC_HDR_MAJOR_VER;
+    anc_msg->hdr.minor_ver = COMM_MGR_MSG_ANC_HDR_MINOR_VER;
+    anc_msg->hdr.anc_msg_type = anc_msg_type;
+    anc_msg->hdr.num_fd = num_fds;
+    anc_msg->hdr.num_vec = num_vector;
+
+    if(num_fds > 0) {
+        anc_msg->fds = (uint32_t *)malloc(sizeof(uint32_t) * num_fds);
+        memcpy(anc_msg->fds, fds, sizeof(uint32_t) * num_fds);
+    }
+
+    if(num_vector > 0) {
+        anc_msg->nPayloadSize = (uint8_t *)malloc(sizeof(uint8_t) * num_vector);
+        memcpy(anc_msg->nPayloadSize, datalen, sizeof(uint8_t) * num_vector);
+
+        for(uint8_t i = 0; i < num_vector; i++) {
+            anc_msg->payloads[i] = (char *)malloc(sizeof(char) * anc_msg->nPayloadSize[i]);
+            memcpy(anc_msg->payloads[i], data[i], sizeof(char) * anc_msg->nPayloadSize[i]);
+        }
+    }
+
+    return comm_msg;
+}
+
+
 
 /*
     This function just creates COMM_MGR_MSG with only header part of
@@ -87,6 +164,38 @@ void comm_mgr_destroy_msg(COMM_MGR_MSG *msg) {
         free(msg->payload);
     }
 
+    if(msg->hdr.msg_type == COMM_MGR_MSG_ANCILLARY) {
+        comm_mgr_destroy_anc_msg(msg);
+    }
+
+    free(msg);
+}
+
+void comm_mgr_destroy_anc_msg(COMM_MGR_MSG *msg) {
+    if(msg == NULL) {
+        return;
+    }
+
+    COMM_MGR_ANC_MSG *anc_msg = COMM_MGR_GET_ANC_MSG(msg); 
+
+    if(anc_msg == NULL) {
+        return;
+    }
+
+    if(anc_msg->fds) {
+        free(anc_msg->fds);
+    }
+
+    if(anc_msg->nPayloadSize) {
+        free(anc_msg->nPayloadSize);
+    }                
+
+    for(uint8_t i = 0; i < anc_msg->hdr.num_vec; i++) {
+        if(anc_msg->payloads[i]) {
+            free(anc_msg->payloads[i]);
+        }            
+    }
+
     free(msg);
 }
 
@@ -117,12 +226,14 @@ COMM_MGR_MSG* comm_mgr_get_msg(char *msg, uint16_t len) {
     // might need to be loosened later
     if ((comm_mgr_msg->hdr.magic != COMM_MGR_MSG_HDR_MAGIC) ||
         (comm_mgr_msg->hdr.msg_type >= COMM_MGR_MSG_MAX)) {
+        free(comm_mgr_msg);
         return NULL;
     }
 
     // Even the number of bytes received also need to match with comm msg size
     if (len > (sizeof(COMM_MGR_MSG_HDR) + 
             sizeof(char) * comm_mgr_msg->hdr.payloadSize)) {
+        free(comm_mgr_msg);             
         return NULL;
     }
 
@@ -133,6 +244,19 @@ COMM_MGR_MSG* comm_mgr_get_msg(char *msg, uint16_t len) {
         memcpy(comm_mgr_msg->payload, msg + sizeof(COMM_MGR_MSG_HDR), comm_mgr_msg->hdr.payloadSize);
     } else {
         comm_mgr_msg->payload = NULL;
+    }
+
+    // Allocate more pointers in case if ancillary message type
+    if(comm_mgr_msg->hdr.msg_type == COMM_MGR_MSG_ANCILLARY) {
+        COMM_MGR_ANC_MSG *anc_msg = (COMM_MGR_ANC_MSG *)malloc(sizeof(COMM_MGR_ANC_MSG));
+        if (anc_msg == NULL) {
+            free(comm_mgr_msg);
+            return NULL;
+        }
+
+        // Override the payload field of Comm Msg with the Ancillary Message
+        comm_mgr_msg->payload = (char *)anc_msg;
+        memset(&anc_msg, 0, sizeof(COMM_MGR_ANC_MSG));
     }
 
     return comm_mgr_msg;
@@ -213,51 +337,211 @@ void comm_mgr_print_msg_hdr(COMM_MGR_MSG *msg, char *buf, uint16_t len) {
     The Ancillary family of send/recv uses a complex message packing to keep the packets
     compatbile with the existing system and also for easy interpretation of the messages in the
     rest of the system. All the complexeties are hidden under these two APIs.
+
+    Each vector is limited to 256 bytes in size. Depending on the flags set only those data is
+    passed back to the application
+
 */
-int comm_mgr_send(int sock, COMM_MGR_FLAG flag, 
-                 uint8_t num_vector, char **data, uint8_t *datalen,
-                 uint8_t num_sendfds, int *sendfds) {
+COMM_MGR_CMN_ERR comm_mgr_send(int sock, COMM_MGR_FLAG flag, COMM_MGR_MSG *comm_msg) { 
     int send_count = 0;
+    uint8_t num_sendfds = 0;
+    uint8_t num_vector = 0;
+    uint32_t len = 0;
+    char *datastream = NULL;
 
-    // Always first check if Normal flag is set.
-    if(flag & COMM_MGR_FLAG_MODE_NORMAL) {
-        // It is expected to get the data in the 0th index
-        if((data == NULL) || (data[0] == NULL) || 
-           (datalen == NULL) || (datalen[0] == 0)) {
-            return -1;
-        }
-
-        send_count = send(sock, data[0], datalen[0], 0);
-        return send_count;
+    if(comm_msg == NULL){
+        return COMM_MGR_CMN_INVALID_ARG;
     }
 
+    // To make this function mutli-thread and re-entrant
+    pthread_once(&datastream_init_done, comm_mgr_datastream_thread_init);
+    datastream = (char *)pthread_getspecific(datastream_key);
+    if(datastream == NULL) {
+        datastream = malloc(sizeof(char) * COMM_MGR_PACKET_MAX_SIZE);
+        if(datastream == NULL) {
+            return COMM_MGR_CMN_NO_MEMORY;
+        }
+        pthread_setspecific(datastream_key, datastream);
+    }
 
+    /* 
+        Check if Default mode is set
 
+        Depending on the msg_type, normal or ancillary send will be used
+    */
+    if (flag == COMM_MGR_FLAG_MODE_DEFAULT) {
+        if((comm_msg->hdr.msg_type == COMM_MGR_MSG_ANCILLARY) &&
+            (comm_msg->hdr.payloadSize == 0)) { // Ancillary message
+            COMM_MGR_ANC_MSG *anc_msg = COMM_MGR_GET_ANC_MSG(comm_msg); 
+            if(anc_msg == NULL) {
+                return COMM_MGR_CMN_INVALID_ARG;
+            }
+            return  __comm_mgr_send_with_ancillary_msg(sock, &comm_msg->hdr, anc_msg);
+        } else {
+            if(comm_msg->hdr.payloadSize > 0) { // Communication Manager message
+    	        len = sizeof(COMM_MGR_MSG_HDR) + (comm_msg->hdr.payloadSize);
+    	        memset(datastream, 0, sizeof(datastream));
+    	        memcpy(datastream, comm_msg, sizeof(COMM_MGR_MSG_HDR));
+    	        memcpy(datastream + sizeof(COMM_MGR_MSG_HDR), comm_msg->payload, (comm_msg->hdr.payloadSize));
+
+                send_count = send(sock, datastream, len, 0);
+                if(send_count < 0) {
+                    return COMM_MGR_CMN_FAILURE;
+                } else if(send_count == 0) {
+                    return COMM_MGR_CMN_PEER_DOWN;
+                }
+                return COMM_MGR_CMN_SUCCESS;
+            }
+            return COMM_MGR_CMN_INVALID_ARG;
+        }
+    }
+
+    // Check if Normal flag is set.
+    if(flag & COMM_MGR_FLAG_MODE_NORMAL) {
+    	len = sizeof(COMM_MGR_MSG_HDR) + (comm_msg->hdr.payloadSize);
+    	memset(datastream, 0, sizeof(datastream));
+    	memcpy(datastream, comm_msg, sizeof(COMM_MGR_MSG_HDR));
+    	memcpy(datastream + sizeof(COMM_MGR_MSG_HDR), comm_msg->payload, (comm_msg->hdr.payloadSize));
+
+        send_count = send(sock, datastream, len, 0);
+        if(send_count < 0) {
+            return COMM_MGR_CMN_FAILURE;
+        } else if(send_count == 0) {
+            return COMM_MGR_CMN_PEER_DOWN;
+        }
+        return COMM_MGR_CMN_SUCCESS;
+    }
+
+    // If not Default/Normal mode then it must be custom Ancillary mode.
+    // Many flags can override the Ancillary Data
+    COMM_MGR_ANC_MSG *anc_msg = COMM_MGR_GET_ANC_MSG(comm_msg); 
+    if(anc_msg == NULL) {
+        return COMM_MGR_CMN_INVALID_ARG;
+    }
+ 
+    if (!(flag & COMM_MGR_FLAG_MODE_FD)) {
+        anc_msg->hdr.num_fd = 0;
+    }
+
+    if (!(flag & COMM_MGR_FLAG_MODE_VECTOR)) {
+        anc_msg->hdr.num_vec = 0;
+    }
+
+    return __comm_mgr_send_with_ancillary_msg(sock, &comm_msg->hdr, anc_msg);
 }
 
 
 /*
     The comm_mgr_recv() function is enhanced to get the data and determine what kind of data and
     appriopriately construct a COMM_MGR_MSG. With this no need to call comm_mgr_get_msg() to allocate
-    memory.
+    memory. This function can receive multiple comm_msgs
 
     Depending on the flag passed, function behaves differently.
 */
-int comm_mgr_recv(int sock, COMM_MGR_FLAG flag, COMM_MGR_MSG **msg) {
-    int recv_count = 0;
+COMM_MGR_CMN_ERR comm_mgr_recv(int sock, COMM_MGR_FLAG flag, COMM_MGR_MSG **msg[], uint8_t *num_msgs) {
+    COMM_MGR_CMN_ERR rc = COMM_MGR_CMN_SUCCESS;
     COMM_MGR_MSG *comm_mgr_msg = NULL;
+    COMM_MGR_ANC_MSG *anc_msg = NULL;
+    int recv_count = 0;
+    COMM_MGR_MSG **ret_msgs;
+    uint8_t ret_msgs_cnt = 0;
 
-    // Always first check if Normal flag is set. 
+    // Check if Normal flag is set. 
     if(flag & COMM_MGR_FLAG_MODE_NORMAL) {
         char buffer[COMM_MGR_MAX_NORMAL_MODE_RECV_BUFFER];
         recv_count = recv(sock, buffer, sizeof(buffer), 0);
-    
-        if(recv_count > 0) {
-            comm_mgr_msg = comm_mgr_get_msg(buffer, recv_count);
-        }
 
-        return recv_count;
+        *msg = NULL;
+        if(recv_count > 0) {
+            comm_mgr_msg = (COMM_MGR_MSG*)buffer;
+            if (comm_mgr_msg == NULL) {
+                return COMM_MGR_CMN_BAD_COMM_MSG;
+            }            
+
+            // Multi message case
+            if (recv_count > (sizeof(COMM_MGR_MSG_HDR) + 
+                    sizeof(char) * comm_mgr_msg->hdr.payloadSize)) {
+                // First count the number of comm msgs in the received buffer 
+                while(comm_mgr_msg) {                
+                    comm_mgr_msg = comm_mgr_get_next_msg((char *)comm_mgr_msg);
+                    ret_msgs_cnt++;
+                }
+                ret_msgs = (COMM_MGR_MSG **)malloc(sizeof(COMM_MGR_MSG *) * ret_msgs_cnt);
+
+                // Now allocate memory for ret_msgs_cnt msgs
+                comm_mgr_msg = (COMM_MGR_MSG*)buffer;
+                for (uint8_t i = 0 ; i < ret_msgs_cnt; i++) {
+                    ret_msgs[i] = comm_mgr_get_msg((char *)comm_mgr_msg, COMM_MGR_MSG_SIZE(comm_mgr_msg));
+                    comm_mgr_msg = comm_mgr_get_next_msg((char *)comm_mgr_msg);
+                }
+                *msg = ret_msgs;
+                *num_msgs = ret_msgs_cnt;
+            } else {            
+                ret_msgs = (COMM_MGR_MSG **)malloc(sizeof(COMM_MGR_MSG *));
+        
+                comm_mgr_msg = comm_mgr_get_msg(buffer, recv_count);
+                if (comm_mgr_msg == NULL) {
+                    return COMM_MGR_CMN_BAD_COMM_MSG;
+                }
+
+                ret_msgs[0] = comm_mgr_msg;
+                *msg = ret_msgs;
+                *num_msgs = 1;
+            }           
+            return COMM_MGR_CMN_SUCCESS;
+        } else if (recv_count == 0) {
+            return COMM_MGR_CMN_PEER_DOWN;
+        } else {
+            return COMM_MGR_CMN_FAILURE;
+        }
     }
+
+    //If not Normal mode then it must be Ancillary mode 
+    // First receive the entire ancillary message
+    char vec[COMM_MGR_MAX_ANCILLARY_USER_IOV][COMM_MGR_MAX_ANCILLARY_IOV_SIZE];
+    uint8_t vec_size[COMM_MGR_MAX_ANCILLARY_USER_IOV];
+    uint8_t vec_num = 0;
+    uint32_t fd_arr[COMM_MGR_MAX_ANCILLARY_FD];
+    uint8_t fd_num = 0;
+
+    COMM_MGR_MSG_HDR comm_hdr;
+    memset(&comm_hdr, 0, sizeof(comm_hdr));
+    COMM_MGR_ANC_MSG t_anc_msg;
+    memset(&t_anc_msg, 0, sizeof(t_anc_msg));
+    
+    t_anc_msg.fds = fd_arr;
+    t_anc_msg.nPayloadSize = vec_size;
+    t_anc_msg.payloads = (char **)vec;
+
+    rc = __comm_mgr_recv_with_ancillary_msg(sock, &comm_hdr, &t_anc_msg);
+    
+    if(rc != COMM_MGR_CMN_SUCCESS) {
+        return COMM_MGR_CMN_FAILURE;
+    }
+
+    // We will also malloc memory and pass it back to the caller to consume
+    comm_mgr_msg = comm_mgr_get_msg((char *)&comm_hdr, 0);
+    anc_msg = COMM_MGR_GET_ANC_MSG(comm_mgr_msg);
+
+    // Depending on the flag set FD/VECTOR will be filled/ignored even though received
+    if(flag & COMM_MGR_FLAG_MODE_FD) {
+        anc_msg->fds = malloc(sizeof(uint32_t) * t_anc_msg.hdr.num_fd);
+        memcpy(anc_msg->fds, t_anc_msg.fds, sizeof(uint32_t) * t_anc_msg.hdr.num_fd);
+        anc_msg->hdr.num_fd = t_anc_msg.hdr.num_fd;
+    }
+
+    if(flag & COMM_MGR_FLAG_MODE_VECTOR) {
+        anc_msg->hdr.num_vec = t_anc_msg.hdr.num_vec;
+        anc_msg->nPayloadSize = malloc(sizeof(uint8_t) * t_anc_msg.hdr.num_vec);
+        memcpy(anc_msg->nPayloadSize, t_anc_msg.nPayloadSize, sizeof(uint8_t) * t_anc_msg.hdr.num_vec);
+        for(uint8_t i = 0 ; i < anc_msg->hdr.num_vec; i++) {
+            anc_msg->payloads[i] = malloc(sizeof(char) * anc_msg->nPayloadSize[i]);
+            memcpy(anc_msg->payloads[i], t_anc_msg.payloads[i], sizeof(char) * anc_msg->nPayloadSize[i]);
+        }            
+    }
+
+    *msg = comm_mgr_msg;
+    return COMM_MGR_CMN_SUCCESS; 
 }
 
 
@@ -269,7 +553,10 @@ int comm_mgr_recv(int sock, COMM_MGR_FLAG flag, COMM_MGR_MSG **msg) {
 
     It can be used to send array of file descriptors, credentials etc
 
-    This function follows a 2-bytes protocol to identify the message its carrying
+    Format of the messages:
+
+    Comm_Mgr Hdr | IOV[0] Anc_Hdr | IOV[1] Vector Sizes | ...... (Vectors)
+                                  | Control Packets (FDs)      ----> FDs go via the control packets
 
     Refer : https://www.ibm.com/support/knowledgecenter/ssw_ibm_i_72/apis/sendms.htm
 
@@ -282,38 +569,27 @@ int comm_mgr_recv(int sock, COMM_MGR_FLAG flag, COMM_MGR_MSG **msg) {
     Note : Return value of -2 is used to indicate some error about the arguments passed
         Usually on failure while sending the return value will be -1 and errono is set
 */
-int comm_mgr_send_with_ancillary_msg(int fd, 
-                                     void **ptr, uint8_t *nbytes, uint8_t niov,
-                                     int *sendfds, uint8_t num_sendfds) {
+static COMM_MGR_CMN_ERR __comm_mgr_send_with_ancillary_msg(int fd,
+                                                           COMM_MGR_MSG_HDR *comm_hdr, 
+                                                           COMM_MGR_ANC_MSG *anc_msg) {
     struct msghdr   msg;
-    struct iovec    iov[COMM_MGR_MAX_ANCILLARY_IOV+1]; // iov[0] is used internally by communication manager
+    struct iovec    iov[COMM_MGR_MAX_ANCILLARY_USER_IOV+COMM_MGR_MAX_ANCILLARY_INTERNAL_IOV];
     struct cmsghdr  *cmptr;
     ssize_t sent_bytes = 0;
     memset(&msg, 0, sizeof(msg));
-    char comm_internal_protocol[COMM_MGR_ANCILLARY_PROTO_SIZE];
+    uint8_t anc_vec_sizes[COMM_MGR_MAX_ANCILLARY_USER_IOV];
 
     if((comm_mgr_auxillary_send_en == FALSE) ||
-        (fd < 0)i || ((num_sendfds > 0) && (sendfds == NULL)) ||
-        (num_sendfds > COMM_MGR_MAX_ANCILLARY_FD) ||
-        ((niov > 0) && (nbytes == NULL))){
-        return -2;
+        (anc_msg == NULL) || (comm_hdr == NULL) ||
+        (fd < 0) || ((anc_msg->hdr.num_fd > 0) && (anc_msg->fds == NULL)) ||
+        (anc_msg->hdr.num_fd > COMM_MGR_MAX_ANCILLARY_FD) ||
+        ((anc_msg->hdr.num_vec > 0) && (anc_msg->nPayloadSize == NULL))){
+        return COMM_MGR_CMN_INVALID_ARG;
     }
 
-    // Sanitize the whole niov
-    if(niov > 0) {
-        for (uint8_t i = 0; i < niov; i++) {
-            if(nbytes[i] == 0) {
-                return -2;
-            }
-            if(ptr[i] == NULL) {
-                return -2;
-            }
-        }
-    }
-
-    if (num_sendfds > 0) {
+    if (anc_msg->hdr.num_fd > 0) {
         char control[CMSG_SPACE(sizeof(int) * COMM_MGR_MAX_ANCILLARY_FD)];
-        uint8_t fdsize = sizeof(int) * num_sendfds;
+        uint8_t fdsize = sizeof(int) * anc_msg->hdr.num_fd;
 
         msg.msg_control = control;
         msg.msg_controllen = sizeof(control);
@@ -322,7 +598,7 @@ int comm_mgr_send_with_ancillary_msg(int fd,
         cmptr->cmsg_level = SOL_SOCKET;
         cmptr->cmsg_type = SCM_RIGHTS;
         cmptr->cmsg_len = CMSG_LEN(fdsize);
-        memcpy(CMSG_DATA(cmptr), sendfds, fdsize);
+        memcpy(CMSG_DATA(cmptr), anc_msg->fds, fdsize);
     } else {
         msg.msg_control = NULL;
         msg.msg_controllen = 0;
@@ -332,46 +608,61 @@ int comm_mgr_send_with_ancillary_msg(int fd,
     msg.msg_name = NULL;
     msg.msg_namelen = 0;  
 
-    iov[0].iov_base = comm_internal_protocol;
-    iov[0].iov_len = sizeof(comm_internal_protocol);
+    // Communication Manager Header
+    iov[0].iov_base = (char *)comm_hdr;
+    iov[0].iov_len = sizeof(COMM_MGR_MSG_HDR);
+
+    // Ancillary Header
+    iov[1].iov_base = (char *)(&anc_msg->hdr);
+    iov[1].iov_len = sizeof(COMM_MGR_ANC_MSG_HDR);
+
+    // For simplicity, always pack the anc_vec_sizes even if anc_msg->hdr.num_vec = 0
+    iov[2].iov_base = anc_vec_sizes;
+    iov[2].iov_len = sizeof(anc_vec_sizes);
+
     msg.msg_iov = iov;
-    msg.msg_iovlen = 1;
+    msg.msg_iovlen = COMM_MGR_MAX_ANCILLARY_INTERNAL_IOV;
 
-    if(niov > 0) { 
-        for (uint8_t i = 0; i < niov; i++) {
-            iov[i+1].iov_base = ptr[i];
-            iov[i+1].iov_len = nbytes[i];
-            printf("nbytes[%d] = %d, ptr[%d] = %p, data = %s\n", i, nbytes[i], i, ptr[i], ptr[i]);
-        }   
-        msg.msg_iov = iov; 
-        msg.msg_iovlen = niov+1;    
-    }
+    for (uint8_t i = 0; i < anc_msg->hdr.num_vec; i++) {
+        anc_vec_sizes[i] = anc_msg->nPayloadSize[i];
+        iov[i+COMM_MGR_MAX_ANCILLARY_INTERNAL_IOV].iov_base = anc_msg->payloads[i];
+        iov[i+COMM_MGR_MAX_ANCILLARY_INTERNAL_IOV].iov_len = anc_msg->nPayloadSize[i];
+        printf("nbytes[%d] = %d, ptr[%d] = %p, data = %s\n", 
+                            i, anc_msg->nPayloadSize[i], i, anc_msg->payloads[i], anc_msg->payloads[i]);
+    }       
 
-    printf("niov = %d\n", niov);
+    msg.msg_iov = iov; 
+    msg.msg_iovlen = anc_msg->hdr.num_vec + COMM_MGR_MAX_ANCILLARY_INTERNAL_IOV;
+
+    printf("niov = %d\n", anc_msg->hdr.num_vec);
 
     sent_bytes = sendmsg(fd, &msg, 0); 
     if(sent_bytes < 0) { 
         printf("Failed to send data\n");
-        return -1; 
+        return COMM_MGR_CMN_FAILURE; 
     }   
-    return sent_bytes;
+    return COMM_MGR_CMN_SUCCESS;
 }
 
-int comm_mgr_recv_with_ancillary_msg(int fd,
-                                     void **ptr, uint8_t *nbytes, uint8_t *niov,
-                                     int *recvfds, uint8_t *num_recvfds) {
+static COMM_MGR_CMN_ERR __comm_mgr_recv_with_ancillary_msg(int fd,
+                                                           COMM_MGR_MSG_HDR *comm_hdr,
+                                                           COMM_MGR_ANC_MSG *anc_msg) {
     struct msghdr   msg;
-    struct iovec    iov[COMM_MGR_MAX_ANCILLARY_IOV+1]; // 1 internal IOV
+    struct iovec    iov[COMM_MGR_MAX_ANCILLARY_USER_IOV+COMM_MGR_MAX_ANCILLARY_INTERNAL_IOV];
     ssize_t         recv_bytes;
     struct cmsghdr  *cmptr;
     char control[CMSG_SPACE(sizeof(int) * COMM_MGR_MAX_ANCILLARY_FD)];
     uint8_t num_recvfds_tmp = 0;
-    char comm_internal_protocol[COMM_MGR_ANCILLARY_PROTO_SIZE]; 
     uint16_t offset = 0;
     uint8_t i = 0;
-    uint8_t local_buffer[COMM_MGR_MAX_ANCILLARY_RECV_BUFFER];
+    uint8_t psuedo_iov[COMM_MGR_MAX_ANCILLARY_RECV_BUFFER];
+    uint8_t anc_vec_sizes[COMM_MGR_MAX_ANCILLARY_USER_IOV];
+    memset(anc_vec_sizes, 0, sizeof(anc_vec_sizes));
 
-    memset(local_buffer, 0, sizeof(local_buffer));
+    if((comm_hdr == NULL) || (anc_msg == NULL)) {
+        return COMM_MGR_CMN_INVALID_ARG;
+    }
+    
     memset(&msg, 0, sizeof(msg));
 
     msg.msg_control = control;
@@ -381,53 +672,68 @@ int comm_mgr_recv_with_ancillary_msg(int fd,
     msg.msg_name = NULL;
     msg.msg_namelen = 0;
 
-    iov[0].iov_base = comm_internal_protocol;
-    iov[0].iov_len = sizeof(comm_internal_protocol);
+    // Communication Manager Header
+    iov[0].iov_base = (char *)comm_hdr;
+    iov[0].iov_len = sizeof(COMM_MGR_MSG_HDR);
 
-    iov[1].iov_base = local_buffer;
-    iov[1].iov_len = sizeof(local_buffer);
+    // Ancillary Header 
+    iov[1].iov_base = (char *)(&anc_msg->hdr);
+    iov[1].iov_len = sizeof(COMM_MGR_ANC_MSG_HDR);
+
+    iov[2].iov_base = (char *)anc_vec_sizes;
+    iov[2].iov_len = sizeof(anc_vec_sizes);
+
+    // There can be multiple user IOVs in this psuedo iov
+    iov[3].iov_base = psuedo_iov;
+    iov[3].iov_len = sizeof(psuedo_iov);
 
     msg.msg_iov = iov;
-    msg.msg_iovlen = 2;
+    msg.msg_iovlen = COMM_MGR_MAX_ANCILLARY_INTERNAL_IOV + 1; // Internal IOVs + 1 pseudo user IOV
 
     if ((recv_bytes = recvmsg(fd, &msg, 0)) < 0) {
     //if ((recv_bytes = recvmmsg(fd, &msgs, 4, 0, NULL)) < 0) {
-        printf("Failed to recv data, recv_bytes = %d\n", recv_bytes);
-        return -1; 
+        printf("Failed to recv data, recv_bytes = %zd\n", recv_bytes);
+        return COMM_MGR_CMN_FAILURE; 
     } else if(recv_bytes == 0) {
         printf("Peer closed the connection\n");
-        return 0;
-    }   
+        return COMM_MGR_CMN_PEER_DOWN;
+    }
 
-    while((i < COMM_MGR_ANCILLARY_PROTO_SIZE) && (comm_internal_protocol[i]  > 0)) {
-        printf("protocol = %d\n", comm_internal_protocol[i]);
-        memcpy(ptr[i], local_buffer + offset, comm_internal_protocol[i]);
-        nbytes[i] = comm_internal_protocol[i];    
-        offset = comm_internal_protocol[i];
-        i++;    
-    }   
-    *niov = i;
+    // Validate the Ancillary Msg Header
+    if (anc_msg->hdr.magic != COMM_MGR_MSG_ANC_HDR_MAGIC){
+        printf("Received bad Ancillary Message");
+        return COMM_MGR_CMN_BAD_ANC_MSG;
+    }
 
-    printf("Received data = %s\n", local_buffer);
-    printf("------------------------------\n");
-    
+    // Now pack the received user IOVs to the anc_msg
+    for (uint8_t i = 0; i < anc_msg->hdr.num_vec; i++) {
+        printf("anc_vec_sizes[%d] = %d\n", i, anc_vec_sizes[i]);
+        memcpy(anc_msg->payloads[i], psuedo_iov+offset, anc_vec_sizes[i]);
+        anc_msg->nPayloadSize[i] = anc_vec_sizes[i]; 
+        offset = anc_vec_sizes[i]; 
+    }    
+ 
     // Some control data is available
     if(msg.msg_controllen > 0) {    
         cmptr = CMSG_FIRSTHDR(&msg);
         while((cmptr != NULL)) {
             if(cmptr->cmsg_len == CMSG_LEN(sizeof(int))) {
                 if ((cmptr->cmsg_level == SOL_SOCKET) && (cmptr->cmsg_type == SCM_RIGHTS)) {
-                    recvfds[num_recvfds_tmp] = *((int *) CMSG_DATA(cmptr));
+                    anc_msg->fds[num_recvfds_tmp] = *((int *) CMSG_DATA(cmptr));
                     num_recvfds_tmp++;
                 }   
             }   
 
             cmptr = CMSG_NXTHDR(&msg, cmptr);
         }   
-        *num_recvfds = num_recvfds_tmp;
+        if(num_recvfds_tmp != anc_msg->hdr.num_fd) {
+            return COMM_MGR_CMN_BAD_ANC_MSG;
+        }
     }   
 
-    return recv_bytes;
+    return COMM_MGR_CMN_SUCCESS;
 }
 
-
+static void comm_mgr_datastream_thread_init(void) {
+    pthread_key_create(&datastream_key, free);
+}

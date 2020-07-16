@@ -61,7 +61,7 @@ int main() {
 #ifdef TEST_UNIX_AF
     memset(&client, 0, sizeof(COMM_MGR_LIB_CLIENT));
     client.clientAf = COMM_MGR_LIB_IPC_AF_UNIX_SOCK_STREAM;
-    client.advanced_en = FALSE;
+    client.ancillary = FALSE;
     client.property = (COMM_MGR_LIB_CLIENT_PROPERTY*)malloc(sizeof(COMM_MGR_LIB_CLIENT_PROPERTY));
     client.property->app_cb = comm_mgr_lib_test_app_cb;
     client.property->comm_mgr_lib_recv_queue_size = TEST_COMM_MGR_LIB_RECV_QUEUE_SIZE;
@@ -78,18 +78,19 @@ int main() {
         return -1;
     }
 
+#if 0
     // Create one more client for ancillary communciation
-    client.advanced_en = TRUE;
+    client.ancillary = TRUE;
     cid[1] = comm_mgr_lib_create_client(&client);
     if(cid[1] == COMM_MGR_LIB_INVALID_CLIENT) { 
         COMM_MGR_LIB_ERROR("%s test failed for COMM_MGR_IPC_LIB_AF_UNIX, rc = 0x%0x", COMM_MGR_LIB_NAME, rc);
         return -1;
     }
-
+#endif
 
     /* Create task handlers for this test app */	
     comm_mgr_test_app_workers[COMM_MGR_TEST_APP_TASK_ID_COMM].arg = (void *)&cid[0];
-    comm_mgr_test_app_workers[COMM_MGR_TEST_APP_TASK_ID_ANC_COMM].arg = (void *)&cid[1];
+    //comm_mgr_test_app_workers[COMM_MGR_TEST_APP_TASK_ID_ANC_COMM].arg = (void *)&cid[1];
 
     // These two workers can be loadshared
     comm_mgr_test_app_workers[COMM_MGR_TEST_APP_TASK_ID_HOUSEKEEPER].arg = (void *)cid;
@@ -173,7 +174,7 @@ void *comm_mgr_test_app_housekeeper(void *arg) {
     char buf[8096];
     int len = 0;
 
-    COMM_MGR_LIB_DEBUG("Client created, id = %d. Ready to send data", cid);
+    COMM_MGR_LIB_DEBUG("Client created, id = %d. Ready to send data", *cid);
 
     fflush(STDIN_FILENO);
     while( (rc=read(STDIN_FILENO, buf, sizeof(buf))) > 0) {
@@ -204,7 +205,7 @@ void *comm_mgr_test_app_data_receiver(void *arg) {
         return NULL;
     }   
     uint16_t *cid = (uint16_t *)arg;
-    COMM_MGR_LIB_TRACE("%s ready to handle housekeeping tasks from Client ID %d", TEST_APP_NAME, cid);
+    COMM_MGR_LIB_TRACE("%s ready to handle housekeeping tasks from Client ID %d", TEST_APP_NAME, *cid);
   
     // The process thread should signal the response thread to go and read from protocol Queue
     boolean run_app_receiver_loop = TRUE;
@@ -238,24 +239,26 @@ COMM_MGR_LIB_TEST_APP_ERR comm_mgr_test_app_process_events(uint16_t cid, boolean
     switch(ev) {
         case COMM_MGR_APP_LOCAL_EVENT_DATA_RECV:
         {
-            comm_msg = comm_mgr_lib_recv_data(cid);
-           
-            if (comm_msg == NULL) {
-                COMM_MGR_LIB_ERROR("No data available from Communication Manager library");
-                return COMM_MGR_LIB_TEST_APP_RECV_ERR; 
+            while(TRUE) {
+                comm_msg = comm_mgr_lib_recv_data(cid);
+                   
+                 if (comm_msg == NULL) {
+                    COMM_MGR_LIB_ERROR("No data available from Communication Manager library");
+                    return COMM_MGR_LIB_TEST_APP_RECV_ERR; 
+                 }
+
+                 COMM_MGR_LIB_TRACE("Data received [%d]: msg_type [%d], submsg_type [%d], src_uid [%d], dst_uid [%d]", 
+                                                                comm_msg->hdr.payloadSize, comm_msg->hdr.msg_type, comm_msg->hdr.submsg_type, 
+                                                                comm_msg->hdr.src_uid, comm_msg->hdr.dst_uid);
+
+                 comm_mgr_print_msg_hdr(comm_msg, buf, sizeof(buf));
+                 COMM_MGR_LIB_PRINT("%s", buf);
+                 if(comm_msg->hdr.payloadSize) {
+                    COMM_MGR_LIB_PRINT("Payload : %s\n", comm_msg->payload);
+                 }
+
+                 comm_mgr_test_app_process_comm_msg(comm_msg); 
             }
-
-            COMM_MGR_LIB_TRACE("Data received [%d]: msg_type [%d], submsg_type [%d], src_uid [%d], dst_uid [%d]", 
-                                                        comm_msg->hdr.payloadSize, comm_msg->hdr.msg_type, comm_msg->hdr.submsg_type, 
-                                                        comm_msg->hdr.src_uid, comm_msg->hdr.dst_uid);
-
-            comm_mgr_print_msg_hdr(comm_msg, buf, sizeof(buf));
-            COMM_MGR_LIB_PRINT("%s", buf);
-            if(comm_msg->hdr.payloadSize) {
-                COMM_MGR_LIB_PRINT("Payload : %s\n", comm_msg->payload);
-            }
-
-            comm_mgr_test_app_process_comm_msg(comm_msg); 
         }
             break;        
         default:
