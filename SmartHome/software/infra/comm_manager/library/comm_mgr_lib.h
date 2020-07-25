@@ -65,6 +65,13 @@ typedef void (*comm_mgr_lib_app_cb)(COMM_MGR_LIB_EVENT);
 */
 typedef uint16_t    COMM_MGR_LIB_CLIENT_ID;
 
+// This defines the properties/capability of the application.
+// It should be common for all clients (Global). Clients will have an internal reference to this to access
+typedef struct {
+    boolean isAncillaryCapable; // If the app has Ancillary channels
+    COMM_MGR_LIB_CLIENT_ID anc_cid; // CID of the Ancillary channel
+} COMM_MGR_LIB_APP_PROPERTY;
+
 /*
     This is a internal data structure used by lib client
     for maintaing meta info about the client.
@@ -78,6 +85,7 @@ typedef struct {
     comm_mgr_lib_dsid_cb *__dsid_cb;/* In */ // Array of Call back functions
     fd_set  __working_read_fd;
     fd_set  __working_write_fd;
+    COMM_MGR_LIB_APP_PROPERTY *__app_property; /* It is common for all clients */
 } COMM_MGR_LIB_CLIENT_INTERNAL;
 
 typedef struct {
@@ -152,6 +160,9 @@ COMM_MGR_LIB_ERR comm_mgr_lib_send_ack(COMM_MGR_LIB_CLIENT_ID id, uint16_t dst_u
 void comm_mgr_lib_free_msg(COMM_MGR_MSG *msg);
 uint8_t comm_mgr_lib_get_status(uint8_t cid, COMM_MGR_LIB_STATUS_GRP grp);
 
+COMM_MGR_LIB_ERR comm_mgr_lib_send_anc_data(COMM_MGR_LIB_CLIENT_ID id, uint16_t dst_uid,
+                                            uint8_t num_vector, char **data, uint8_t *datalen,
+                                            uint8_t num_fds, int *fds);
 
 /******************************************************************************/
 /*          Internal Functions                                                */
@@ -161,7 +172,7 @@ static void __comm_mgr_lib_delete_client(COMM_MGR_LIB_CLIENT_ID id);
 static COMM_MGR_LIB_ERR comm_mgr_set_non_blocking_io(int socket_fd);
 static COMM_MGR_LIB_ERR __comm_mgr_lib_receive_packets(COMM_MGR_LIB_CLIENT_ID id, COMM_MGR_MSG *msg);
 static COMM_MGR_LIB_ERR __comm_mgr_lib_send_msg(COMM_MGR_LIB_CLIENT *client, COMM_MGR_MSG_HDR *hdr,
-                                        char *msg, int len);
+                                               void *msg, int len);
 static COMM_MGR_LIB_ERR __comm_mgr_lib_send_protocol(COMM_MGR_LIB_CLIENT *client, 
                                             COMM_MGR_SUBMSG_TYPE submsg_type,
                                             char *payload, uint16_t payloadsize);
@@ -172,7 +183,10 @@ static COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_statemachine(COMM_MGR_LIB_CLIENT
 static COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_discovery_start(COMM_MGR_LIB_CLIENT *client, COMM_MGR_MSG *msg);
 static COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_discovery_done(COMM_MGR_LIB_CLIENT *client, COMM_MGR_MSG *msg);
 static COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_learning(COMM_MGR_LIB_CLIENT *client, COMM_MGR_MSG *msg);
+static COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_anc_learning(COMM_MGR_LIB_CLIENT *client, COMM_MGR_MSG *msg);
 static COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_datatransfer_ready(COMM_MGR_LIB_CLIENT *client, COMM_MGR_MSG *msg);
+static COMM_MGR_LIB_ERR __comm_mgr_lib_send_anc_system_info(COMM_MGR_LIB_CLIENT *client, uint16_t dst_uid, 
+                                                            char *data, uint8_t datalen);
 static COMM_MGR_LIB_ERR __comm_mgr_lib_update_local_uid_map(COMM_MGR_MSG *msg);
 static boolean __comm_mgr_lib_is_uid_valid(uint16_t uid);
 static boolean __comm_mgr_lib_is_uid_static(uint16_t uid);

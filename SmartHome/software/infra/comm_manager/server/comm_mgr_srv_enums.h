@@ -40,6 +40,7 @@ BEGIN_ENUM(COMM_MGR_SRV_ERR) {
     ADD_ENUM(COMM_MGR_SRV_UDS_MASTER_INIT_ERR)
     ADD_ENUM(COMM_MGR_SRV_UDS_BAD_PACKET)
     ADD_ENUM(COMM_MGR_SRV_UDS_PROCESS_EVENT_ERR)
+    ADD_ENUM(COMM_MGR_SRV_UDS_TRANSIT_EVENT_ERR)
 } END_ENUM(COMM_MGR_SRV_ERR);
 
 BEGIN_ENUM(COMM_MGR_SRV_IPC_AF) {
@@ -66,6 +67,15 @@ BEGIN_ENUM(COMM_MGR_SRV_TASK_ID) {
     ADD_ENUM(COMM_MGR_SRV_TASK_ID_MAX)
 } END_ENUM(COMM_MGR_SRV_TASK_ID);
 
+// These conflict types are used in multi-master case with load sharing enabled
+BEGIN_ENUM(COMM_MGR_SRV_MASTER_CONFLICT_TYPE) {
+    ADD_ENUM_STR(COMM_MGR_SRV_MASTER_CONFLICT_MSG, "Decide on COMM_MGR_SRV_MSG to resolve")
+    ADD_ENUM_STR(COMM_MGR_SRV_MASTER_CONFLICT_PROTO, "Decide on protocol/state to resolve")
+    ADD_ENUM_STR(COMM_MGR_SRV_MASTER_CONFLICT_ACTION, "Decide on current action/function to resolve")
+    ADD_ENUM_STR(COMM_MGR_SRV_MASTER_CONFLICT_FIRST, "Use the first available master to resolve")
+    ADD_ENUM_STR(COMM_MGR_SRV_MASTER_CONFLICT_RANDOM, "Use a random master to resolve")    
+} END_ENUM(COMM_MGR_SRV_MASTER_CONFLICT_TYPE);
+
 //These are some of the predefined DSID needed by Communication Manager. The master
 // instance can also add its own DSIDs outside this range
 BEGIN_ENUM(COMM_MGR_SRV_DSID) {
@@ -73,6 +83,7 @@ BEGIN_ENUM(COMM_MGR_SRV_DSID) {
     ADD_ENUM_STR(COMM_MGR_SRV_DSID_PROTO, "DSID for Protocols")
     ADD_ENUM_STR(COMM_MGR_SRV_DSID_SEND, "DSID for sending the Data")
     ADD_ENUM_STR(COMM_MGR_SRV_DSID_HOUSEKEEP, "DSID for Internal house keeping")
+    ADD_ENUM_STR(COMM_MGR_SRV_DSID_TRANSIT, "DSID for saving the transit packets for short time")
     ADD_ENUM(COMM_MGR_SRV_DSID_MAX) // Master instances can use private DSIDs outside this
 } END_ENUM(COMM_MGR_SRV_DSID);
 
@@ -81,8 +92,19 @@ BEGIN_ENUM(COMM_MGR_SRV_DSID) {
 BEGIN_ENUM(COMM_MGR_SRV_HOUSEKEEP_EVENT) {
     ADD_ENUM_STR(COMM_MGR_SRV_HOUSEKEEP_EVENT_CLIENT_DOWN, "Client is going down")
     ADD_ENUM_STR(COMM_MGR_SRV_HOUSEKEEP_EVENT_CLIENT_UP, "Client has come up")
+    ADD_ENUM_STR(COMM_MGR_SRV_HOUSEKEEP_EVENT_FWD_TRANSIT, "Forward normal transit packets")
+    ADD_ENUM_STR(COMM_MGR_SRV_HOUSEKEEP_EVENT_FWD_ANC_TRANSIT, "Forward ancillary transit packets")
     ADD_ENUM(COMM_MGR_SRV_HOUSEKEEP_EVENT_MAX)
 } END_ENUM(COMM_MGR_SRV_HOUSEKEEP_EVENT);
+
+// This is used to pick/filter various kinds of Transit packets. Refer COMM_MGR_SRV_UDS_TRANSIT
+BEGIN_ENUM(COMM_MGR_SRV_TRANSIT_SELECT) {
+    ADD_ENUM_STR(COMM_MGR_SRV_TRANSIT_SELECT_ALL, "Select all Transit packets")
+    ADD_ENUM_STR(COMM_MGR_SRV_TRANSIT_SELECT_NONE, "Select none of Transit packets")
+    ADD_ENUM_STR(COMM_MGR_SRV_TRANSIT_SELECT_SPECIFIC, "Select a specific Transit packets")
+    ADD_ENUM_STR(COMM_MGR_SRV_TRANSIT_SELECT_OLD, "Select the oldest Transit packets")
+    ADD_ENUM_STR(COMM_MGR_SRV_TRANSIT_SELECT_NEW, "Select latest Transit packets")
+} END_ENUM(COMM_MGR_SRV_TRANSIT_SELECT);
 
 /********************************************************************************/
 /*                      Event functionality (using utils library)               */

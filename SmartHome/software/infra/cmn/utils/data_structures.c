@@ -28,7 +28,7 @@ static void* __utils_ds_queue_dequeue_circular(UTILS_DS_ID id);
 static void __utils_ds_queue_destroy_circular(UTILS_DS_ID id, boolean delete_data);
 static boolean __utils_ds_queue_isfull(UTILS_DS_ID id);
 static boolean __utils_ds_queue_isempty(UTILS_DS_ID id);
-
+static uint32_t __utils_ds_queue_get_currsize(UTILS_DS_ID id);
 
 
 
@@ -177,6 +177,9 @@ boolean utils_ds_queue_is_empty(UTILS_DS_ID id) {
     return __utils_ds_queue_isempty(id);
 }
 
+uint32_t utils_ds_queue_get_count(UTILS_DS_ID id) {
+    return __utils_ds_queue_get_currsize(id);
+}
 
 /*****************************************************************************
                     Internal Functions
@@ -380,4 +383,10 @@ static boolean __utils_ds_queue_isempty(UTILS_DS_ID id) {
 
     if(qmeta->currsize == 0) { return TRUE; }
     return FALSE;
+}
+
+static uint32_t __utils_ds_queue_get_currsize(UTILS_DS_ID id) {
+    __UTILS_QUEUE_META *qmeta = utils_ds_metadata[UTILS_DS_GET_ID(id)];
+
+    return qmeta->currsize;
 }

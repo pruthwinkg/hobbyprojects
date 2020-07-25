@@ -108,11 +108,16 @@ typedef struct {
 COMM_MGR_MSG* comm_mgr_create_msg(uint16_t src_uid, uint16_t dst_uid, 
                                  COMM_MGR_MSG_TYPE msg_type, char *payload, 
                                  uint16_t payloadSize);
+COMM_MGR_MSG* comm_mgr_create_anc_msg(uint16_t src_uid, uint16_t dst_uid, COMM_MGR_ANC_MSG_TYPE anc_msg_type,
+                                      uint8_t num_vector, char **data, uint8_t *datalen,
+                                      uint8_t num_fds, int *fds);
+
 COMM_MGR_MSG comm_mgr_create_msg_hdr(uint16_t src_uid, uint16_t dst_uid, 
                                     COMM_MGR_MSG_TYPE msg_type, 
                                     uint16_t payloadSize);
 COMM_MGR_MSG* comm_mgr_get_msg(char *msg, uint16_t len);
 COMM_MGR_MSG* comm_mgr_get_next_msg(char *msg);
+boolean comm_mgr_is_valid_msg(COMM_MGR_MSG *msg);
 void comm_mgr_print_msg_hdr(COMM_MGR_MSG *msg, char *buf, uint16_t len);
 
 void comm_mgr_destroy_msg(COMM_MGR_MSG *msg);

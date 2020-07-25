@@ -41,6 +41,7 @@ static boolean comm_mgr_lib_auxillary_send_en = COMM_MGR_LIB_USE_ANCILLARY_SEND;
 boolean comm_mgr_lib_initialized = FALSE;
 
 static COMM_MGR_LIB_STATUS __comm_mgr_lib_status[COMM_MGR_LIB_MAX_CLIENTS];
+COMM_MGR_LIB_APP_PROPERTY __comm_mgr_lib_app_property;
 
 COMM_MGR_LIB_ERR comm_mgr_lib_init(LOG_LEVEL level, uint16_t src_uid, boolean epoll_en) {
     log_lib_init(NULL, level);
@@ -56,6 +57,8 @@ COMM_MGR_LIB_ERR comm_mgr_lib_init(LOG_LEVEL level, uint16_t src_uid, boolean ep
     for (uint16_t i = 0; i < COMM_MGR_LIB_MAX_CLIENTS; i++) {
         memset(&__comm_mgr_lib_status[i], 0, sizeof(COMM_MGR_LIB_STATUS));
     }
+
+    memset(&__comm_mgr_lib_app_property, 0, sizeof(COMM_MGR_LIB_APP_PROPERTY));
 
     return COMM_MGR_LIB_SUCCESS; 
 }
@@ -187,6 +190,7 @@ COMM_MGR_LIB_CLIENT_ID comm_mgr_lib_create_client(COMM_MGR_LIB_CLIENT *client) {
     __comm_mgr_lib_clients[id].client_ptr->__proto_state = COMM_MGR_PROTO_DISCOVERY_START;
     __comm_mgr_lib_clients[id].__clientID = (id | (client->clientAf << 4));
     __comm_mgr_lib_clients[id].property = (COMM_MGR_LIB_CLIENT_PROPERTY*)malloc(sizeof(COMM_MGR_LIB_CLIENT_PROPERTY));
+    __comm_mgr_lib_clients[id].client_ptr->__app_property = &__comm_mgr_lib_app_property;
 
     // Copy the user supplied client properties, if present. Else set default
     if(client->property != NULL) {
@@ -244,6 +248,12 @@ COMM_MGR_LIB_CLIENT_ID comm_mgr_lib_create_client(COMM_MGR_LIB_CLIENT *client) {
     if (__comm_mgr_lib_clients[id].client_ptr->__DSID[COMM_MGR_LIB_DSID_DATA_SEND] == 0) {
         COMM_MGR_LIB_ERROR("Failed to create COMM_MGR_LIB_DSID_DATA_SEND");
         goto cleanup;
+    }
+
+    // Update the Global Library App properties
+    if(client->ancillary == TRUE) {
+        __comm_mgr_lib_app_property.isAncillaryCapable = TRUE;
+        __comm_mgr_lib_app_property.anc_cid = __comm_mgr_lib_clients[id].__clientID; 
     }
 
     return __comm_mgr_lib_clients[id].__clientID;
@@ -330,9 +340,80 @@ COMM_MGR_LIB_ERR comm_mgr_lib_send_data(COMM_MGR_LIB_CLIENT_ID id, uint16_t dst_
     hdr.msg_type = COMM_MGR_MSG_DATA;
     hdr.dst_uid = dst_uid;
 
-    ret = __comm_mgr_lib_send_msg(&__comm_mgr_lib_clients[cid], &hdr, msg, len);
+    ret = __comm_mgr_lib_send_msg(&__comm_mgr_lib_clients[cid], &hdr, (void *)msg, len);
 
     return ret;
+}
+
+/*
+    This function is used to send Ancillary data. This is a powerful send function
+    which can be used to send file descriptors, credetials, vectors etc
+*/
+COMM_MGR_LIB_ERR comm_mgr_lib_send_anc_data(COMM_MGR_LIB_CLIENT_ID id, uint16_t dst_uid, 
+                                            uint8_t num_vector, char **data, uint8_t *datalen,
+                                            uint8_t num_fds, int *fds) {
+
+    uint8_t cid = COMM_MGR_LIB_GET_CLIENT_ID(id);
+    COMM_MGR_LIB_ERR ret = COMM_MGR_LIB_SUCCESS;
+    COMM_MGR_MSG_HDR hdr;
+    memset(&hdr, 0, sizeof(COMM_MGR_MSG_HDR));
+
+    // Do a validation here as much as possible, even the internal common comm_mgr functions
+    // are fully capable of handling all kinds of error situation. This will avoid error
+    // checking in the inner-most functions and we can immediately inform the caller about this.
+    if(num_vector > 0) {
+        // Sanitize the whole vector
+        for (uint8_t i = 0; i < num_vector; i++) {
+            if(datalen[i] == 0) {
+                COMM_MGR_LIB_ERROR("Invalid datalen");
+                return COMM_MGR_LIB_INVALID_ARG;
+            }
+            if(data[i] == NULL) {
+                COMM_MGR_LIB_ERROR("Invalid data pointer");
+                return COMM_MGR_LIB_INVALID_ARG;
+            }
+        }
+    }
+
+    // There are certain software defined artifical limitation as well. Validate them
+    if(num_fds > COMM_MGR_MAX_ANCILLARY_FD) {
+        COMM_MGR_LIB_ERROR("Max number of FD allowed is %d", COMM_MGR_MAX_ANCILLARY_FD);
+        return COMM_MGR_LIB_INVALID_ARG;
+    }
+    if(num_vector > COMM_MGR_MAX_ANCILLARY_USER_IOV) {
+        COMM_MGR_LIB_ERROR("Max number of Vectors allowed is %d", COMM_MGR_MAX_ANCILLARY_USER_IOV);
+        return COMM_MGR_LIB_INVALID_ARG; 
+    }
+
+
+    if(id > COMM_MGR_LIB_MAX_CLIENTS) {
+        COMM_MGR_LIB_ERROR("Invalid client");
+        return COMM_MGR_LIB_INVALID_CLIENT_ERR;
+    }
+    if(__comm_mgr_lib_clients[cid].client_ptr == NULL) {
+        COMM_MGR_LIB_ERROR("Invalid client");
+        return COMM_MGR_LIB_INVALID_CLIENT_ERR;
+    }
+
+    // Just the dst_uid and msg type is enough
+    hdr.msg_type = COMM_MGR_MSG_ANCILLARY;
+    hdr.dst_uid = dst_uid;
+
+    // This is like a container, used to hold the user passed pointers. No need to
+    // fill other fileds like magic, version etc.
+    COMM_MGR_ANC_MSG anc_msg;
+    memset(&anc_msg, 0, sizeof(anc_msg));
+    anc_msg.hdr.anc_msg_type = COMM_MGR_ANC_MSG_DATA;
+    anc_msg.hdr.num_fd = num_fds;
+    anc_msg.hdr.num_vec = num_vector;
+    anc_msg.payloads = data;
+    anc_msg.nPayloadSize = datalen;
+    anc_msg.fds = fds;
+
+    ret = __comm_mgr_lib_send_msg(&__comm_mgr_lib_clients[cid], &hdr, (void *)&anc_msg, 0);
+
+    return ret;
+
 }
 
 /*
@@ -496,8 +577,9 @@ static COMM_MGR_LIB_ERR  __comm_mgr_lib_receive_packets(COMM_MGR_LIB_CLIENT_ID i
             __comm_mgr_lib_ack_handler(&__comm_mgr_lib_clients[cid], msg);
             break;
         case COMM_MGR_MSG_DATA:
+        case COMM_MGR_MSG_ANCILLARY:
             __comm_mgr_lib_data_handler(&__comm_mgr_lib_clients[cid], msg);
-            break;
+            break;            
         default:
             return COMM_MGR_LIB_BAD_PACKET;
     }
@@ -512,9 +594,10 @@ static COMM_MGR_LIB_ERR  __comm_mgr_lib_receive_packets(COMM_MGR_LIB_CLIENT_ID i
         @param msg It can be NULL also in case of ACK and Protocol packets
 */
 static COMM_MGR_LIB_ERR __comm_mgr_lib_send_msg(COMM_MGR_LIB_CLIENT *client, COMM_MGR_MSG_HDR *hdr, 
-                                      char *msg, int len) {
+                                                void *msg, int len) {
     struct hostent *server = &(client->server);
     uint32_t comm_msg_size = 0;
+    COMM_MGR_MSG *comm_mgr_msg = NULL;
 
     if (client == NULL) {
         return COMM_MGR_LIB_INVALID_ARG;
@@ -530,8 +613,20 @@ static COMM_MGR_LIB_ERR __comm_mgr_lib_send_msg(COMM_MGR_LIB_CLIENT *client, COM
         COMM_MGR_LIB_DEBUG("Sending via Unix Domain Socket\n");
     }
 
-    COMM_MGR_MSG *comm_mgr_msg = comm_mgr_create_msg(client->client_ptr->__src_uid, 
-                                    hdr->dst_uid, hdr->msg_type, msg, len);
+    if(hdr->msg_type == COMM_MGR_MSG_ANCILLARY) {
+        COMM_MGR_ANC_MSG *anc_msg = (COMM_MGR_ANC_MSG *)msg;
+        if(anc_msg == NULL) {
+            COMM_MGR_LIB_ERROR("Invalid ancillary message");
+            return COMM_MGR_LIB_INVALID_ARG; 
+        }
+        comm_mgr_msg = comm_mgr_create_anc_msg(client->client_ptr->__src_uid, hdr->dst_uid, anc_msg->hdr.anc_msg_type,
+                                               anc_msg->hdr.num_vec, anc_msg->payloads, anc_msg->nPayloadSize,
+                                               anc_msg->hdr.num_fd, anc_msg->fds);
+    } else {
+        comm_mgr_msg = comm_mgr_create_msg(client->client_ptr->__src_uid, 
+                                    hdr->dst_uid, hdr->msg_type, (char *)msg, len);
+    }
+
     if (comm_mgr_msg == NULL) {
         COMM_MGR_LIB_ERROR("Couldn't create the COMM_MGR_MSG packet. Not sending the msg");
         return COMM_MGR_LIB_SEND_ERR;
@@ -597,7 +692,7 @@ static COMM_MGR_LIB_ERR __comm_mgr_lib_send_protocol(COMM_MGR_LIB_CLIENT *client
     hdr.submsg_type = submsg_type;
     hdr.dst_uid = SYS_MGR_SYSTEM_UID_COMM_MANAGER; // Communication Manager's UID always
 
-    ret = __comm_mgr_lib_send_msg(client, &hdr, payload, payloadsize);
+    ret = __comm_mgr_lib_send_msg(client, &hdr, (void *)payload, payloadsize);
 
     return ret;
 }
@@ -628,6 +723,8 @@ static COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_handler(COMM_MGR_LIB_CLIENT *cli
         case COMM_MGR_SUBMSG_DATATXREADY:
             __comm_mgr_lib_protocol_statemachine(client, msg);
             break;
+        case COMM_MGR_SUBMSG_ANC_LEARNING:
+            __comm_mgr_lib_protocol_anc_learning(client, msg);
         default:
             COMM_MGR_LIB_ERROR("Received a bad protocol packet"); 
             return COMM_MGR_LIB_PROTO_BAD_PACKET;
@@ -940,6 +1037,48 @@ send_nack:
     return COMM_MGR_LIB_PROTO_BAD_PACKET;
 }
 
+/*
+    Ancillary Learning messages are sent by the Communication Manager Server when it
+    needs to learn about the Ancillary Channel of this UID (App).
+
+    If this UID doesn't have the Ancillary Channel open or there is no capability then
+    send back an Ancillary NACK
+
+    If the Ancillary Channel exists, then send an Ancillary message destined to the 
+    Communication Manager for it to know this UIDs Ancillary capability
+*/
+static
+COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_anc_learning(COMM_MGR_LIB_CLIENT *client,
+                                                      COMM_MGR_MSG *msg) {
+    COMM_MGR_LIB_ERR ret = COMM_MGR_LIB_SUCCESS;
+    // Check if the Ancillary Channel is Open Or if we have the capability
+    if(client->client_ptr->__app_property->isAncillaryCapable == FALSE) {
+        COMM_MGR_LIB_TRACE("Ancillary Communication Channel doesn't exist for this Client ID [%d]",
+                            client->__clientID);
+        ret = comm_mgr_lib_send_ack(client->__clientID, SYS_MGR_SYSTEM_UID_COMM_MANAGER, COMM_MGR_SUBMSG_ANC_NACK);
+        if(ret != COMM_MGR_LIB_SUCCESS) {
+            COMM_MGR_LIB_ERROR("Failed to send ANC NACK PROTO packet to Communication Manager")
+        }
+        // Drop the msg received since we done using it
+        comm_mgr_lib_free_msg(msg);       
+        return ret;
+    }
+    
+    // Since the Ancillary channel exist in this app, change the client internally to send response bacl to server
+    uint8_t anc_cid = COMM_MGR_LIB_GET_CLIENT_ID(client->client_ptr->__app_property->anc_cid);
+    COMM_MGR_LIB_CLIENT *anc_client = &__comm_mgr_lib_clients[anc_cid]; 
+
+    // If the Ancillary Channel exists, then send the Ancillary Message to the Server
+    if(__comm_mgr_lib_send_anc_system_info(anc_client, SYS_MGR_SYSTEM_UID_COMM_MANAGER,
+                                           NULL, 0) != COMM_MGR_LIB_SUCCESS) {
+        COMM_MGR_LIB_ERROR("Failed to send the Ancillary Learning Messageto the Communication Manager");
+    }                               
+
+    // Drop the msg received since we done using it
+    comm_mgr_lib_free_msg(msg);
+
+    return COMM_MGR_LIB_SUCCESS;
+}                                                  
 
 /*
     This function is the entry point once the client finishes the Discovery stages. 
@@ -976,6 +1115,48 @@ COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_datatransfer_ready(COMM_MGR_LIB_CLIENT 
     return ret;
 }
 
+/*
+    This function is used to send Ancillary System Info
+*/
+static
+COMM_MGR_LIB_ERR __comm_mgr_lib_send_anc_system_info(COMM_MGR_LIB_CLIENT *client, uint16_t dst_uid,
+                                                    char *data, uint8_t datalen) {
+
+    COMM_MGR_LIB_ERR ret = COMM_MGR_LIB_SUCCESS;
+    COMM_MGR_MSG_HDR hdr;
+    memset(&hdr, 0, sizeof(COMM_MGR_MSG_HDR));
+
+    if(client == NULL) {
+        COMM_MGR_LIB_ERROR("Client is Invalid");
+        return COMM_MGR_LIB_INVALID_CLIENT_ERR; 
+    }
+
+    // Just the dst_uid and msg type is enough
+    hdr.msg_type = COMM_MGR_MSG_ANCILLARY;
+    hdr.dst_uid = dst_uid;
+
+    // This is like a container, used to hold the user passed pointers. No need to
+    // fill other fileds like magic, version etc.
+    COMM_MGR_ANC_MSG anc_msg;
+    memset(&anc_msg, 0, sizeof(anc_msg));
+    anc_msg.hdr.anc_msg_type = COMM_MGR_ANC_MSG_SYSTEM_INFO;
+    anc_msg.hdr.num_fd = 0;
+    if (datalen == 0) { // If the datalen is 0, reset the num_vec to 0
+        anc_msg.hdr.num_vec = 0;
+        anc_msg.payloads = NULL;
+        anc_msg.nPayloadSize = NULL;
+    } else {
+        anc_msg.hdr.num_vec = 1;
+        anc_msg.payloads = &data;
+        anc_msg.nPayloadSize = &datalen;
+    }
+    anc_msg.fds = NULL;
+
+    ret = __comm_mgr_lib_send_msg(client, &hdr, (void *)&anc_msg, 0);
+
+    return ret;
+
+}
 
 /*
     The lib constructs the map during runtime using the info provided by the 
@@ -1117,6 +1298,8 @@ static COMM_MGR_LIB_ERR __comm_mgr_lib_server_communicator_with_select(COMM_MGR_
     }
 
     max_sd = __comm_mgr_lib_clients[cid].client_ptr->__fd;
+
+    COMM_MGR_LIB_DEBUG("Listen FD[%d] for ClientID [%d]", max_sd, cid);
 
     working_read_fd = &(__comm_mgr_lib_clients[cid].client_ptr->__working_read_fd);
     working_write_fd = &(__comm_mgr_lib_clients[cid].client_ptr->__working_write_fd); 

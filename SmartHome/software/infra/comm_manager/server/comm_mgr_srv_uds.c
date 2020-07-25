@@ -5,9 +5,6 @@
 
 #include "comm_mgr_srv_uds.h"
 
-uint8_t g_comm_mgr_uds_master_instances_num = 0;
-boolean g_comm_mgr_uds_loadsharing_en = FALSE;
-
 /*
     @brief This function creates a unique set of instances of UDS type
 
@@ -28,10 +25,12 @@ COMM_MGR_SRV_ERR comm_mgr_srv_create_uds_master(uint16_t *masterID, COMM_MGR_SRV
     COMM_MGR_SRV_ERR ret = COMM_MGR_SRV_SUCCESS;
     COMM_MGR_SRV_MASTER uds_master;
   
-    g_comm_mgr_uds_master_instances_num = num_instances;
-    g_comm_mgr_uds_loadsharing_en = loadsharing;
-
-    uint16_t *g_masterID = (uint16_t *)malloc(sizeof(uint16_t) * num_instances);
+    COMM_MGR_SRV_WORKER_ARG *g_workerArg = (COMM_MGR_SRV_WORKER_ARG*)malloc(sizeof(COMM_MGR_SRV_WORKER_ARG));
+    memset(g_workerArg, 0, sizeof(COMM_MGR_SRV_WORKER_ARG));
+    g_workerArg->isLoadSharingEn = loadsharing;
+    g_workerArg->num_masterFDs = num_instances;
+    g_workerArg->masterFDs = (uint16_t *)malloc(sizeof(uint16_t) * num_instances);
+    g_workerArg->resolver = comm_mgr_srv_uds_master_conflict_resolver;
 
     for (uint8_t i = 0; i < num_instances; i++) {
         memset(&uds_master, 0, sizeof(COMM_MGR_SRV_MASTER));
@@ -68,6 +67,8 @@ COMM_MGR_SRV_ERR comm_mgr_srv_create_uds_master(uint16_t *masterID, COMM_MGR_SRV
             COMM_MGR_SRV_ERROR("Failed to create a UDS master instance");
             return COMM_MGR_SRV_UDS_MASTER_INIT_ERR;
         }
+        COMM_MGR_SRV_DEBUG("Created COMM_MGR_SRV_DSID_RECV[0x%0x] for Master instance %d", 
+                    uds_master.__DSID[COMM_MGR_SRV_DSID_RECV], i);
 
         // Create a Circular Queue for storing the data to be sent to clients
         queue.type = UTILS_QUEUE_CIRCULAR;
@@ -79,8 +80,11 @@ COMM_MGR_SRV_ERR comm_mgr_srv_create_uds_master(uint16_t *masterID, COMM_MGR_SRV
             COMM_MGR_SRV_ERROR("Failed to create a UDS master instance");
             return COMM_MGR_SRV_UDS_MASTER_INIT_ERR;
         }
+        COMM_MGR_SRV_DEBUG("Created COMM_MGR_SRV_DSID_SEND[0x%0x] for Master instance %d", 
+                    uds_master.__DSID[COMM_MGR_SRV_DSID_SEND], i);
 
-        // Create a Circular Queue for storing the data to be sent to clients
+
+        // Create a Circular Queue for storing the housekeeping jobs
         queue.type = UTILS_QUEUE_CIRCULAR;
         queue.size = UDS_MASTER_SEND_QUEUE_SIZE;
         queue.isPriority = FALSE;
@@ -89,11 +93,29 @@ COMM_MGR_SRV_ERR comm_mgr_srv_create_uds_master(uint16_t *masterID, COMM_MGR_SRV
             COMM_MGR_SRV_ERROR("Failed to create a UDS master instance");
             return COMM_MGR_SRV_UDS_MASTER_INIT_ERR;
         }
+        COMM_MGR_SRV_DEBUG("Created COMM_MGR_SRV_DSID_HOUSEKEEP[0x%0x] for Master instance %d", 
+                    uds_master.__DSID[COMM_MGR_SRV_DSID_HOUSEKEEP], i);
+
+
+        // Create a Circular Queue for storing the transit packets
+        queue.type = UTILS_QUEUE_CIRCULAR;
+        queue.size = UDS_MASTER_TRANSIT_QUEUE_SIZE;
+        queue.isPriority = FALSE;
+        uds_master.__DSID[COMM_MGR_SRV_DSID_TRANSIT] = utils_ds_queue_create(&queue);
+        if (uds_master.__DSID[COMM_MGR_SRV_DSID_TRANSIT] == 0) {
+            COMM_MGR_SRV_ERROR("Failed to create a UDS master instance");
+            return COMM_MGR_SRV_UDS_MASTER_INIT_ERR;
+        }
+        COMM_MGR_SRV_DEBUG("Created COMM_MGR_SRV_DSID_TRANSIT[0x%0x] for Master instance %d", 
+                    uds_master.__DSID[COMM_MGR_SRV_DSID_TRANSIT], i);
+
 
         uds_master.__dsid_cb[COMM_MGR_SRV_DSID_RECV] = comm_mgr_srv_uds_master_recv_data;
         uds_master.__dsid_cb[COMM_MGR_SRV_DSID_PROTO] = comm_mgr_srv_uds_master_proto_data;
         uds_master.__dsid_cb[COMM_MGR_SRV_DSID_SEND] = comm_mgr_srv_uds_master_send_data;
         uds_master.__dsid_cb[COMM_MGR_SRV_DSID_HOUSEKEEP] = comm_mgr_srv_uds_master_housekeeper;
+        uds_master.__dsid_cb[COMM_MGR_SRV_DSID_TRANSIT] = comm_mgr_srv_uds_master_transit_data;
+
 
         ret = comm_mgr_srv_init_master(&uds_master);
         if (ret != COMM_MGR_SRV_SUCCESS) {
@@ -102,17 +124,17 @@ COMM_MGR_SRV_ERR comm_mgr_srv_create_uds_master(uint16_t *masterID, COMM_MGR_SRV
         }
 
         masterID[i] = uds_master.__masterID;
-        COMM_MGR_SRV_TRACE("Created a UDS master instance ID 0x%x", *masterID);
+        COMM_MGR_SRV_TRACE("Created a UDS master instance ID 0x%x", masterID[i]);
 
-        g_masterID[i] = uds_master.__masterID;
+        g_workerArg->masterFDs[i] = uds_master.__masterID;
 
         // Req worker threads cannot be shared
         switch(instances[i]) {
             case COMM_MGR_SRV_MASTER_DEFAULT_UDS:
-                comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_UDS_REQ].arg = (void *)g_masterID;    
+                comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_UDS_REQ].arg = (void *)g_workerArg;    
                 break;
             case COMM_MGR_SRV_MASTER_SECONDARY_UDS:
-                comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_SEC_UDS_REQ].arg = (void *)g_masterID;
+                comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_SEC_UDS_REQ].arg = (void *)g_workerArg;
                 break;
             default:
                 COMM_MGR_SRV_ERROR("Not yet supported");
@@ -121,10 +143,10 @@ COMM_MGR_SRV_ERR comm_mgr_srv_create_uds_master(uint16_t *masterID, COMM_MGR_SRV
     }
 
     // If loadsharing is enabled, then below worker threads are shared
-    comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_UDS_PROCESS].arg = (void *)g_masterID;
-    comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_UDS_RES_STATIC_UID].arg = (void *)g_masterID;
-    comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_UDS_RES_DYNAMIC_UID].arg = (void *)g_masterID;
-    comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_UDS_HOUSEKEEPER].arg = (void *)g_masterID;    
+    comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_UDS_PROCESS].arg = (void *)g_workerArg;
+    comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_UDS_RES_STATIC_UID].arg = (void *)g_workerArg;
+    comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_UDS_RES_DYNAMIC_UID].arg = (void *)g_workerArg;
+    comm_mgr_srv_workers[COMM_MGR_SRV_TASK_ID_UDS_HOUSEKEEPER].arg = (void *)g_workerArg;    
 
     return COMM_MGR_SRV_SUCCESS;
 }
@@ -137,30 +159,43 @@ void* comm_mgr_srv_uds_request_handler(void *arg) {
         COMM_MGR_SRV_ERROR("Invalid Master ID");
         return NULL;
     }
-    uint16_t *masterID = (uint16_t *)arg;
+    COMM_MGR_SRV_WORKER_ARG *workerArg = (COMM_MGR_SRV_WORKER_ARG *)arg;
 
-    for (uint8_t i = 0; i < g_comm_mgr_uds_master_instances_num; i++) {
-        COMM_MGR_SRV_TRACE("%s ready to accept requests for master ID %d", 
-                        COMM_MGR_SRV_APP_NAME, masterID[i]);
-    }                
-    comm_mgr_srv_accept_clients(masterID[0]);
+    COMM_MGR_SRV_TRACE("%s ready to accept requests for master ID %d", 
+                        COMM_MGR_SRV_APP_NAME, workerArg->masterFDs[0]);  
+
+    comm_mgr_srv_accept_clients(workerArg->masterFDs[0]);
+}
+
+void* comm_mgr_srv_sec_uds_request_handler(void *arg) {
+    if (arg == NULL) {
+        COMM_MGR_SRV_ERROR("Invalid Master ID");
+        return NULL;
+    }
+    COMM_MGR_SRV_WORKER_ARG *workerArg = (COMM_MGR_SRV_WORKER_ARG *)arg;
+
+    COMM_MGR_SRV_TRACE("%s ready to accept requests for master ID %d", 
+                        COMM_MGR_SRV_APP_NAME, workerArg->masterFDs[1]);  
+
+    comm_mgr_srv_accept_clients(workerArg->masterFDs[1]);
 }
 
 /*
     A generic run loop for UDS masters. Any worker thread can call this function to
     wait for events and process it.
 */
-static void __comm_mgr_srv_uds_run_loop(uint16_t *masterID) {
+static void __comm_mgr_srv_uds_run_loop(COMM_MGR_SRV_WORKER_ARG *workerArg) {
     boolean run_uds_loop = TRUE;
     uint16_t eventListSize = 5;
     uint32_t eventList[eventListSize];
     uint16_t eventsRead = 0;
+    uint16_t *masterID = workerArg->masterFDs;
 
     while(run_uds_loop) {
        eventsRead = utils_task_handlers_get_events(eventList, eventListSize);
        for (uint16_t i = 0; i < eventsRead; i++) {
-            if(g_comm_mgr_uds_loadsharing_en == TRUE) {
-                for (uint8_t j = 0; j < g_comm_mgr_uds_master_instances_num; j++) {
+            if(workerArg->isLoadSharingEn == TRUE) {
+                for (uint8_t j = 0; j < workerArg->num_masterFDs; j++) {
                     if(UTILS_TASK_HANDLER_EVENT_IS_GLOBAL(eventList[i])) {
                         comm_mgr_srv_uds_process_events(masterID[j], FALSE, UTILS_TASK_HANDLER_EVENT_GET(eventList[i]));    
                     } else {
@@ -187,10 +222,12 @@ void* comm_mgr_srv_uds_process_handler(void *arg) {
         COMM_MGR_SRV_ERROR("Invalid Master ID");
         return NULL;
     }
-    uint16_t *masterID = (uint16_t *)arg;
     
-    if(g_comm_mgr_uds_loadsharing_en == TRUE) {
-        for(uint8_t i = 0; i < g_comm_mgr_uds_master_instances_num; i++) {
+    COMM_MGR_SRV_WORKER_ARG *workerArg = (COMM_MGR_SRV_WORKER_ARG *)arg;
+    uint16_t *masterID = workerArg->masterFDs;
+    
+    if(workerArg->isLoadSharingEn == TRUE) {
+        for(uint8_t i = 0; i < workerArg->num_masterFDs; i++) {
             COMM_MGR_SRV_TRACE("%s ready to process requests for master ID %d", 
                         COMM_MGR_SRV_APP_NAME, masterID[i]);
         }
@@ -200,7 +237,7 @@ void* comm_mgr_srv_uds_process_handler(void *arg) {
     }
 
     // The request thread should signal the process thread to go and read from Queue
-    __comm_mgr_srv_uds_run_loop(masterID);
+    __comm_mgr_srv_uds_run_loop(workerArg);
 }
 
 /*
@@ -212,10 +249,12 @@ void* comm_mgr_srv_uds_response_static_handler(void *arg) {
         COMM_MGR_SRV_ERROR("Invalid Master ID");
         return NULL;
     }
-    uint16_t *masterID = (uint16_t *)arg;
 
-    if(g_comm_mgr_uds_loadsharing_en == TRUE) {
-        for(uint8_t i = 0; i < g_comm_mgr_uds_master_instances_num; i++) {
+    COMM_MGR_SRV_WORKER_ARG *workerArg = (COMM_MGR_SRV_WORKER_ARG *)arg;
+    uint16_t *masterID = workerArg->masterFDs;
+
+    if(workerArg->isLoadSharingEn == TRUE) {
+        for(uint8_t i = 0; i < workerArg->num_masterFDs; i++) {
             COMM_MGR_SRV_TRACE("%s ready to send responses for static UIDs from master ID %d", 
                         COMM_MGR_SRV_APP_NAME, masterID[i]);
         }
@@ -225,7 +264,7 @@ void* comm_mgr_srv_uds_response_static_handler(void *arg) {
     }
 
     // The process thread should signal the response thread to go and read from protocol Queue
-    __comm_mgr_srv_uds_run_loop(masterID);
+    __comm_mgr_srv_uds_run_loop(workerArg);
 }
 
 /*
@@ -237,10 +276,12 @@ void* comm_mgr_srv_uds_response_dynamic_handler(void *arg) {
         COMM_MGR_SRV_ERROR("Invalid Master ID");
         return NULL;
     }
-    uint16_t *masterID = (uint16_t *)arg;
 
-    if(g_comm_mgr_uds_loadsharing_en == TRUE) {
-        for(uint8_t i = 0; i < g_comm_mgr_uds_master_instances_num; i++) {
+    COMM_MGR_SRV_WORKER_ARG *workerArg = (COMM_MGR_SRV_WORKER_ARG *)arg;
+    uint16_t *masterID = workerArg->masterFDs;
+
+    if(workerArg->isLoadSharingEn == TRUE) {
+        for(uint8_t i = 0; i < workerArg->num_masterFDs; i++) {
             COMM_MGR_SRV_TRACE("%s ready to send responses for dynamic UIDs from master ID %d", 
                         COMM_MGR_SRV_APP_NAME, masterID[i]);
         }
@@ -250,7 +291,7 @@ void* comm_mgr_srv_uds_response_dynamic_handler(void *arg) {
     }
 
     // The process thread should signal the response thread to go and read from protocol Queue
-    __comm_mgr_srv_uds_run_loop(masterID);
+    __comm_mgr_srv_uds_run_loop(workerArg);
 }
 
 /*
@@ -262,10 +303,12 @@ void* comm_mgr_srv_uds_housekeeping_handler(void *arg) {
         COMM_MGR_SRV_ERROR("Invalid Master ID");
         return NULL;
     }
-    uint16_t *masterID = (uint16_t *)arg;
 
-    if(g_comm_mgr_uds_loadsharing_en == TRUE) {
-        for(uint8_t i = 0; i < g_comm_mgr_uds_master_instances_num; i++) {
+    COMM_MGR_SRV_WORKER_ARG *workerArg = (COMM_MGR_SRV_WORKER_ARG *)arg;
+    uint16_t *masterID = workerArg->masterFDs;
+
+    if(workerArg->isLoadSharingEn == TRUE) {
+        for(uint8_t i = 0; i < workerArg->num_masterFDs; i++) {
             COMM_MGR_SRV_TRACE("%s ready to handle housekeeping tasks from master ID %d", 
                         COMM_MGR_SRV_APP_NAME, masterID[i]);
         }
@@ -274,7 +317,7 @@ void* comm_mgr_srv_uds_housekeeping_handler(void *arg) {
                COMM_MGR_SRV_APP_NAME, masterID[0]);
     }
 
-    __comm_mgr_srv_uds_run_loop(masterID);
+    __comm_mgr_srv_uds_run_loop(workerArg);
 }
 
 
@@ -408,7 +451,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_send_data(UTILS_DS_ID id, void *arg1, v
     This DSID callback is used to send jobs to the HouseKeeping task to perform
     certain actions/tasks on its behalf.
 
-    The jobs are enqued in COMM_MGR_SRV_UDS_HK_JOB structure format
+    The jobs are enqued in COMM_MGR_SRV_HK_JOB structure format
 
     Here the caller has to allocate the memory to arg before calling this
 */
@@ -425,7 +468,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_housekeeper(UTILS_DS_ID id, void *arg1,
         return COMM_MGR_SRV_UTILS_DSID_ERR;
     }
 
-    COMM_MGR_SRV_UDS_HK_JOB *hk_job = (COMM_MGR_SRV_UDS_HK_JOB *)arg1;
+    COMM_MGR_SRV_HK_JOB *hk_job = (COMM_MGR_SRV_HK_JOB *)arg1;
 
     COMM_MGR_SRV_UDS_MSG *uds_msg = __comm_mgr_srv_uds_msg_create((void *)hk_job, 0);
      if (uds_msg == NULL) {
@@ -445,10 +488,46 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_housekeeper(UTILS_DS_ID id, void *arg1,
     return COMM_MGR_SRV_SUCCESS;
 }
 
+/*
+    This DSID callback is used to save the transit packets for a short duration
+
+    The transit packets can be dropped/forwarded/tweaked etc
+
+    The Transit DSID callback doesnt send any events to anyone nor gets any events
+    It acts almost like a buffer for the Master instances. The other task handlers 
+    manages the DSID
+
+    Here the caller has to allocate the memory to arg before calling this
+*/
+
+COMM_MGR_SRV_ERR comm_mgr_srv_uds_master_transit_data(UTILS_DS_ID id, void *arg1, void *arg2, void **arg) {
+    boolean priority = FALSE;
+
+    if (arg1 == NULL) {
+        COMM_MGR_SRV_ERROR("Invalid argument. arg is NULL");
+        return COMM_MGR_SRV_INVALID_ARG;
+    }
+    if (id == 0) {
+        COMM_MGR_SRV_ERROR("Invalid DSID");
+        return COMM_MGR_SRV_UTILS_DSID_ERR;
+    }
+
+    COMM_MGR_SRV_MSG *srv_msg = (COMM_MGR_SRV_MSG *)arg1;
+
+    COMM_MGR_SRV_DEBUG("Inserting data to DSID 0x%0x", id);
+    // Insert the data to Queue
+    if(utils_ds_queue_enqueue(id, (void *)srv_msg) < 0) {
+        COMM_MGR_SRV_ERROR("Failed to insert the data to DSID 0x%0x", id);
+        return COMM_MGR_SRV_UTILS_DSID_ERR;
+    }
+   
+    return COMM_MGR_SRV_SUCCESS;
+}
+
 COMM_MGR_SRV_ERR comm_mgr_srv_uds_process_events(uint16_t masterID, boolean isLocalMode, uint32_t event) {
     COMM_MGR_SRV_LOCAL_EVENT ev = (COMM_MGR_SRV_LOCAL_EVENT)event;
-    COMM_MGR_SRV_DEBUG("Processing the event = %d, (%s), mode = %s", 
-                event, DECODE_ENUM(COMM_MGR_SRV_LOCAL_EVENT, ev), isLocalMode?"local":"global");
+    COMM_MGR_SRV_DEBUG("Processing the event = %d, (%s), mode = %s, MasterID %d", 
+                event, DECODE_ENUM(COMM_MGR_SRV_LOCAL_EVENT, ev), isLocalMode?"local":"global", masterID);
 
     COMM_MGR_SRV_UDS_MSG *uds_msg;
     char *out_data;
@@ -508,7 +587,16 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_process_events(uint16_t masterID, boolean isLo
                     } else if (ret == COMM_MGR_SRV_SUCCESS) {
                         // Check if any actions is requested by Comm Mgr Core
                         if (comm_mgr_srv_msg->action & COMM_MGR_SRV_MSG_ACTION_HOLD) {
-                            uds_msg->action = UDS_MASTER_MSG_ACTION_HOLD; // In case of Discovery start
+                            // Add this packet to the Transit DSID
+                            if (master->__dsid_cb[COMM_MGR_SRV_DSID_TRANSIT]) {
+                                master->__dsid_cb[COMM_MGR_SRV_DSID_TRANSIT](master->__DSID[COMM_MGR_SRV_DSID_TRANSIT], (void *)comm_mgr_srv_msg, NULL, NULL);
+                            } else {
+                                // If the Transit DSID not present, just drop the packet
+                                COMM_MGR_SRV_DEBUG("Master instance doesn't have a Transit DSID to perform HOLD on packet. Dropping the packet");
+                                uds_msg->action = UDS_MASTER_MSG_ACTION_DROP;
+                                __comm_mgr_srv_uds_msg_action(uds_msg);
+                            }
+                            continue; // Process next in queue
                         }
 
                         if (comm_mgr_srv_msg->action & COMM_MGR_SRV_MSG_ACTION_DROP) {
@@ -601,7 +689,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_handle_housekeeping_events(COMM_MGR_SRV_MASTER
     boolean handle_housekeeping_event_loop = TRUE;
     COMM_MGR_SRV_ERR ret = COMM_MGR_SRV_SUCCESS;
     COMM_MGR_SRV_UDS_MSG *uds_msg;
-    COMM_MGR_SRV_UDS_HK_JOB *hk_job;
+    COMM_MGR_SRV_HK_JOB *hk_job;
 
     while(handle_housekeeping_event_loop) {
     // Process all the house keeping events which are pending
@@ -610,15 +698,20 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_handle_housekeeping_events(COMM_MGR_SRV_MASTER
             break; // Queue is empty
         }                  
 
-        hk_job = (COMM_MGR_SRV_UDS_HK_JOB *)uds_msg->msg;
+        hk_job = (COMM_MGR_SRV_HK_JOB *)uds_msg->msg;
         if(hk_job == NULL) {
             break; // Queue is empty
         }
+           
+       COMM_MGR_SRV_DEBUG("Received Hosekeeping event [%d] (%s)", 
+                            hk_job->event, DECODE_ENUM(COMM_MGR_SRV_HOUSEKEEP_EVENT, hk_job->event));
         switch(hk_job->event) {
             case COMM_MGR_SRV_HOUSEKEEP_EVENT_CLIENT_DOWN:
-                COMM_MGR_SRV_DEBUG("Received Hosekeeping event [%d] (%s)", 
-                            hk_job->event, DECODE_ENUM(COMM_MGR_SRV_HOUSEKEEP_EVENT, hk_job->event));
                 ret = comm_mgr_srv_protocol_client_event(hk_job->event, hk_job->eventData); 
+                break;
+            case COMM_MGR_SRV_HOUSEKEEP_EVENT_FWD_TRANSIT:    
+            case COMM_MGR_SRV_HOUSEKEEP_EVENT_FWD_ANC_TRANSIT:
+                ret = comm_mgr_srv_uds_transit_event(hk_job->event, hk_job->eventData);  
                 break;
             default:
                 COMM_MGR_SRV_ERROR("Unknown Housekeeping event [%d]", hk_job->event);
@@ -632,6 +725,50 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_handle_housekeeping_events(COMM_MGR_SRV_MASTER
     COMM_MGR_SRV_DEBUG("Processed the DSID [0x%0x] completely for event %d", 
                            master->__DSID[COMM_MGR_SRV_DSID_HOUSEKEEP], COMM_MGR_SRV_LOCAL_EVENT_HOUSEKEEP);
 
+    return ret;
+}
+
+/*
+    This function handles various events associated with a transit packet
+*/
+COMM_MGR_SRV_ERR comm_mgr_srv_uds_transit_event(uint8_t ev, void *arg) {
+    COMM_MGR_SRV_ERR ret = COMM_MGR_SRV_SUCCESS;
+    switch(ev) {
+        case COMM_MGR_SRV_HOUSEKEEP_EVENT_FWD_ANC_TRANSIT:
+            if (arg == NULL) {
+                return COMM_MGR_SRV_INVALID_ARG;
+            }
+            COMM_MGR_SRV_TRANSIT_ENTRY *transit_pkt = (COMM_MGR_SRV_TRANSIT_ENTRY*)arg;
+            // Check who is Master instance of this task 
+            COMM_MGR_SRV_MASTER *master = comm_mgr_srv_get_master(transit_pkt->masterID); 
+            if(master == NULL) {
+                COMM_MGR_SRV_ERROR("Not to able to identify the Master for the transit event [%d]", ev);
+                return COMM_MGR_SRV_UDS_TRANSIT_EVENT_ERR;
+            }            
+            uint16_t dst_uid = transit_pkt->dst_uid;
+            uint16_t src_uid = transit_pkt->src_uid;
+            uint32_t transit_queue_count = utils_ds_queue_get_count(master->__DSID[COMM_MGR_SRV_DSID_TRANSIT]); 
+            // There are various filtering needs to be done based on 'which_' fields.
+            // For now, lets only do dst_uid specific 
+            if (transit_pkt->which_dst == COMM_MGR_SRV_TRANSIT_SELECT_SPECIFIC) {
+                // We need to move the packets with dst_uid from Transit DSID to Send DSID.
+
+                // To simplify moving, we will need an API in UTILS lib which can tell the total count in Queue
+                // Then we can simply use a for loop and move one by one 
+                for(uint32_t i = 0 ; i < transit_queue_count; i++) {
+                    COMM_MGR_SRV_MSG *srv_msg = (COMM_MGR_SRV_MSG *)utils_ds_queue_dequeue(master->__DSID[COMM_MGR_SRV_DSID_TRANSIT]);
+                    if(srv_msg->msg->hdr.dst_uid != dst_uid) { // Re-enqueue 
+                        master->__dsid_cb[COMM_MGR_SRV_DSID_TRANSIT](master->__DSID[COMM_MGR_SRV_DSID_TRANSIT], (void *)srv_msg, NULL, NULL);                                      
+                    } else { // Move to Send DSID (It will send event as well)
+                        master->__dsid_cb[COMM_MGR_SRV_DSID_SEND](master->__DSID[COMM_MGR_SRV_DSID_SEND], (void *)srv_msg, NULL, NULL); 
+                    }
+                }
+            }
+
+            break;
+        default:
+            return COMM_MGR_SRV_UNKNOWN_EVENT;
+    }
     return ret;
 }
 
@@ -659,6 +796,33 @@ void comm_mgr_srv_uds_response_dynamic_register_events(uint32_t taskID) {
 void comm_mgr_srv_uds_housekeeping_register_events(uint32_t taskID) {
 
     utils_task_handlers_register_event(COMM_MGR_SRV_LOCAL_EVENT_HOUSEKEEP, taskID);    
+}
+
+// This is conflict resolution vector used to resolve the ambiguity in choosing a master instance
+// in a multi-master loadsharing enabled scenerio. The Server core will send a best available conflict type
+// and ask the UDS to resolve the conflict for it. The conflict type depends on the nature of data available
+// when this conflict occurs in the Server core. The UDS can either honour that type request, or it can also
+// make its own decision
+uint16_t comm_mgr_srv_uds_master_conflict_resolver(COMM_MGR_SRV_MASTER_CONFLICT_TYPE type, void *arg, 
+                                                   void *workerArg) {
+    uint16_t masterID = 0;
+    COMM_MGR_SRV_WORKER_ARG *w_Arg = (COMM_MGR_SRV_WORKER_ARG *)workerArg;
+    COMM_MGR_SRV_MSG *srv_msg;
+    switch(type) {
+        case COMM_MGR_SRV_MASTER_CONFLICT_MSG:
+            srv_msg = (COMM_MGR_SRV_MSG *)arg;
+            // If it is a ancillary message, use the 2nd master instance
+            if(srv_msg->msg->hdr.msg_type == COMM_MGR_MSG_ANCILLARY) {
+                masterID = w_Arg->masterFDs[1];
+            } else {
+                masterID = w_Arg->masterFDs[0];
+            }
+            break;
+        case COMM_MGR_SRV_MASTER_CONFLICT_FIRST: // Core is asking for the first available instance
+            masterID = w_Arg->masterFDs[0];
+            break;
+    }
+    return masterID;
 }
 
 /*******************************************************************************/

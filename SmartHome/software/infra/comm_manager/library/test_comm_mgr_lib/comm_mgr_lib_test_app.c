@@ -18,12 +18,14 @@
 #define TEST_COMM_MGR_LIB_SRC_UID   (1022) // Static UID
 #define TEST_COMM_MGR_LIB_DST_UID   (1023) // Static UID
 #define TEST_APP_NAME   "Test-app-1"
+#define TEST_FILE_NAME  "/tmp/testFile1"
 #endif
 
 #ifdef TEST_APP_2
 #define TEST_COMM_MGR_LIB_SRC_UID   (1023) // Static UID
 #define TEST_COMM_MGR_LIB_DST_UID   (1022) // Static UID
 #define TEST_APP_NAME   "Test-app-2"
+#define TEST_FILE_NAME  "/tmp/testFile2"
 #endif
 
 #define TEST_COMM_MGR_LIB_RECV_QUEUE_SIZE   (100)
@@ -67,6 +69,7 @@ int main() {
     client.property->comm_mgr_lib_recv_queue_size = TEST_COMM_MGR_LIB_RECV_QUEUE_SIZE;
     client.property->comm_mgr_lib_send_queue_size = TEST_COMM_MGR_LIB_SEND_QUEUE_SIZE;
     client.property->libInactivityTimeOut = COMM_MGR_LIB_DEFAULT_SELECT_TIMEOUT;
+    
     COMM_MGR_LIB_DEBUG("Starting %s test for COMM_MGR_IPC_LIB_AF_UNIX", COMM_MGR_LIB_NAME);
 
     g_comm_mgr_lib_test_clients_num = 2;
@@ -78,7 +81,6 @@ int main() {
         return -1;
     }
 
-#if 0
     // Create one more client for ancillary communciation
     client.ancillary = TRUE;
     cid[1] = comm_mgr_lib_create_client(&client);
@@ -86,11 +88,10 @@ int main() {
         COMM_MGR_LIB_ERROR("%s test failed for COMM_MGR_IPC_LIB_AF_UNIX, rc = 0x%0x", COMM_MGR_LIB_NAME, rc);
         return -1;
     }
-#endif
 
     /* Create task handlers for this test app */	
     comm_mgr_test_app_workers[COMM_MGR_TEST_APP_TASK_ID_COMM].arg = (void *)&cid[0];
-    //comm_mgr_test_app_workers[COMM_MGR_TEST_APP_TASK_ID_ANC_COMM].arg = (void *)&cid[1];
+    comm_mgr_test_app_workers[COMM_MGR_TEST_APP_TASK_ID_ANC_COMM].arg = (void *)&cid[1];
 
     // These two workers can be loadshared
     comm_mgr_test_app_workers[COMM_MGR_TEST_APP_TASK_ID_HOUSEKEEPER].arg = (void *)cid;
@@ -174,6 +175,13 @@ void *comm_mgr_test_app_housekeeper(void *arg) {
     char buf[8096];
     int len = 0;
 
+    FILE *f = fopen(TEST_FILE_NAME, "w+");
+    fprintf(f, "Written by %s", TEST_APP_NAME);
+    int fd = fileno(f);
+    int fds[5];
+    fds[0] = fd;
+    int num_fds = 1;
+
     COMM_MGR_LIB_DEBUG("Client created, id = %d. Ready to send data", *cid);
 
     fflush(STDIN_FILENO);
@@ -185,8 +193,10 @@ void *comm_mgr_test_app_housekeeper(void *arg) {
 
         COMM_MGR_LIB_DEBUG("Sending data to dst_uid [%d], src_uid [%d]", 
                                     TEST_COMM_MGR_LIB_DST_UID, TEST_COMM_MGR_LIB_SRC_UID);
-        if(!strncmp(buf, "file", 4)) { 
-            if(comm_mgr_lib_send_data(cid[1], TEST_COMM_MGR_LIB_DST_UID, buf, strlen(buf)) != COMM_MGR_LIB_SUCCESS ) {
+        if(!strncmp(buf, "file", 4)) {
+            int fd = fileno(f);
+            if(comm_mgr_lib_send_anc_data(cid[1], TEST_COMM_MGR_LIB_DST_UID,
+                                          0, NULL, NULL, num_fds, fds) != COMM_MGR_LIB_SUCCESS) {
                 COMM_MGR_LIB_ERROR("Failed to send the data");
             }
         } else {
@@ -309,7 +319,27 @@ void comm_mgr_lib_test_app_cb(COMM_MGR_LIB_EVENT event) {
 
 */
 COMM_MGR_LIB_TEST_APP_ERR comm_mgr_test_app_process_comm_msg(COMM_MGR_MSG *comm_msg) {
+
+    if(comm_msg->hdr.msg_type == COMM_MGR_MSG_ANCILLARY) {
+        COMM_MGR_ANC_MSG *anc_msg = COMM_MGR_GET_ANC_MSG(comm_msg);
+        
+        printf("Received an Ancillary message, num_fd = %d\n", anc_msg->hdr.num_fd);
+        int fd = 0;
+        char fileBuf[100];
+        memset(fileBuf, 0, sizeof(fileBuf));
+        if(anc_msg->hdr.num_fd > 0) {
+            fd = anc_msg->fds[0];
+            FILE *f = fdopen(fd, "w+");
+            fseek( f, 0, SEEK_SET );
+            fread(fileBuf, sizeof(fileBuf), 1, f);
+            printf("Content of the file = %s\n", fileBuf);
+            fclose(f);
+        }
+    }        
+
     
+
+#if 0
     uint16_t word0 = *(uint16_t *)&(comm_msg->payload[0]);
     uint16_t req_uid = comm_msg->hdr.src_uid;
     uint16_t res_uid = comm_msg->hdr.dst_uid;
@@ -321,6 +351,7 @@ COMM_MGR_LIB_TEST_APP_ERR comm_mgr_test_app_process_comm_msg(COMM_MGR_MSG *comm_
     } else {
         COMM_MGR_LIB_DEBUG("Unknown type of payload");
     }
+#endif
 
     return COMM_MGR_LIB_TEST_APP_SUCCESS;
 }

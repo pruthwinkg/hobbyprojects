@@ -93,7 +93,7 @@ COMM_MGR_MSG* comm_mgr_create_anc_msg(uint16_t src_uid, uint16_t dst_uid, COMM_M
     // Override the payload field of Comm Msg with the Ancillary Message
     comm_msg->payload = (char *)anc_msg;
 
-    memset(&anc_msg, 0, sizeof(COMM_MGR_ANC_MSG));
+    memset(anc_msg, 0, sizeof(COMM_MGR_ANC_MSG));
     anc_msg->hdr.magic = COMM_MGR_MSG_ANC_HDR_MAGIC;
     anc_msg->hdr.major_ver = COMM_MGR_MSG_ANC_HDR_MAJOR_VER;
     anc_msg->hdr.minor_ver = COMM_MGR_MSG_ANC_HDR_MINOR_VER;
@@ -160,12 +160,15 @@ void comm_mgr_destroy_msg(COMM_MGR_MSG *msg) {
         return;
     }
 
-    if (msg->hdr.payloadSize > 0) {
-        free(msg->payload);
-    }
-
     if(msg->hdr.msg_type == COMM_MGR_MSG_ANCILLARY) {
         comm_mgr_destroy_anc_msg(msg);
+    }
+
+    // Freeing the payload should be done at end, because payload may be
+    // overloaded with other message formats in case of Ancillary or other
+    // Overlay formats (SCOM)
+    if (msg->hdr.payloadSize > 0) {
+        free(msg->payload);
     }
 
     free(msg);
@@ -195,8 +198,6 @@ void comm_mgr_destroy_anc_msg(COMM_MGR_MSG *msg) {
             free(anc_msg->payloads[i]);
         }            
     }
-
-    free(msg);
 }
 
 /*
@@ -256,7 +257,7 @@ COMM_MGR_MSG* comm_mgr_get_msg(char *msg, uint16_t len) {
 
         // Override the payload field of Comm Msg with the Ancillary Message
         comm_mgr_msg->payload = (char *)anc_msg;
-        memset(&anc_msg, 0, sizeof(COMM_MGR_ANC_MSG));
+        memset(anc_msg, 0, sizeof(COMM_MGR_ANC_MSG));
     }
 
     return comm_mgr_msg;
@@ -294,6 +295,43 @@ COMM_MGR_MSG* comm_mgr_get_next_msg(char *msg) {
     }
 
     return comm_mgr_msg;    
+}
+
+/*
+    This function tells if a given comm_mgr msg is valid or not
+*/
+boolean comm_mgr_is_valid_msg(COMM_MGR_MSG *msg) {
+    if(msg == NULL) {
+        return FALSE;
+    }
+
+    // Validate the Common header first
+    if ((msg->hdr.magic != COMM_MGR_MSG_HDR_MAGIC) ||
+        (msg->hdr.msg_type >= COMM_MGR_MSG_MAX)) {
+        return FALSE;
+    }
+
+    // If it is a Ancillary message type, validate all its internal header
+    if(msg->hdr.msg_type == COMM_MGR_MSG_ANCILLARY) {
+        COMM_MGR_ANC_MSG *anc_msg = COMM_MGR_GET_ANC_MSG(msg);
+        if (anc_msg == NULL) { 
+            return FALSE;
+        }
+        if((anc_msg->hdr.magic != COMM_MGR_MSG_ANC_HDR_MAGIC) ||
+          (anc_msg->hdr.anc_msg_type >= COMM_MGR_MSG_ANC_MSG_MAX) ||
+          (anc_msg->hdr.num_fd > COMM_MGR_MAX_ANCILLARY_FD) ||
+          (anc_msg->hdr.num_vec > COMM_MGR_MAX_ANCILLARY_USER_IOV)){
+            return FALSE;
+        }
+        if((anc_msg->hdr.num_fd > 0) && (anc_msg->fds == NULL)) {
+            return FALSE;
+        }
+        if(((anc_msg->hdr.num_vec > 0) && (anc_msg->nPayloadSize == NULL)) ||
+            ((anc_msg->hdr.num_vec > 0) && (anc_msg->payloads == NULL))) {
+            return FALSE;
+        }
+    }
+    return TRUE;
 }
 
 /*
@@ -516,12 +554,21 @@ COMM_MGR_CMN_ERR comm_mgr_recv(int sock, COMM_MGR_FLAG flag, COMM_MGR_MSG **msg[
     rc = __comm_mgr_recv_with_ancillary_msg(sock, &comm_hdr, &t_anc_msg);
     
     if(rc != COMM_MGR_CMN_SUCCESS) {
+        // For peer down, the server needs to know about it
+        if(rc == COMM_MGR_CMN_PEER_DOWN) {
+            return COMM_MGR_CMN_PEER_DOWN;
+        }
+        // All other error types can be combined as CMN_FAILURE
         return COMM_MGR_CMN_FAILURE;
     }
 
     // We will also malloc memory and pass it back to the caller to consume
-    comm_mgr_msg = comm_mgr_get_msg((char *)&comm_hdr, 0);
+    comm_mgr_msg = comm_mgr_get_msg((char *)&comm_hdr, sizeof(COMM_MGR_MSG_HDR));
+    if(comm_mgr_msg == NULL) {
+        return COMM_MGR_CMN_FAILURE;
+    }
     anc_msg = COMM_MGR_GET_ANC_MSG(comm_mgr_msg);
+    memcpy(&anc_msg->hdr, &t_anc_msg, sizeof(COMM_MGR_ANC_MSG_HDR));
 
     // Depending on the flag set FD/VECTOR will be filled/ignored even though received
     if(flag & COMM_MGR_FLAG_MODE_FD) {
@@ -540,7 +587,16 @@ COMM_MGR_CMN_ERR comm_mgr_recv(int sock, COMM_MGR_FLAG flag, COMM_MGR_MSG **msg[
         }            
     }
 
-    *msg = comm_mgr_msg;
+    // Finally validate the received and sculpted message before passing it back to the application
+    if(comm_mgr_is_valid_msg(comm_mgr_msg) == FALSE) {
+        comm_mgr_destroy_msg(comm_mgr_msg);
+        return COMM_MGR_CMN_FAILURE;
+    }
+
+    ret_msgs = (COMM_MGR_MSG **)malloc(sizeof(COMM_MGR_MSG *));
+    ret_msgs[0] = comm_mgr_msg;
+    *msg = ret_msgs;
+    *num_msgs = 1;
     return COMM_MGR_CMN_SUCCESS; 
 }
 

@@ -36,7 +36,8 @@ typedef struct {
 
 typedef struct {        
     uint32_t UID;
-    int server_fd;
+    int server_fd; // Used for Normal channel
+    int server_anc_fd; // Used for Ancillary Channel
     COMM_MGR_PROTO_STATES proto_state; // Current state
     uint8_t proto_sub_state; // Used for intermediate state transitions
     uint16_t masterID; // Can map a UID for a Master instance
@@ -81,6 +82,7 @@ static COMM_MGR_SRV_ERR __comm_mgr_srv_protocol_discovery_start(uint16_t uid, CO
 static COMM_MGR_SRV_ERR __comm_mgr_srv_protocol_discovery_done(uint16_t uid, COMM_MGR_SRV_MSG *srv_msg);
 static COMM_MGR_SRV_ERR __comm_mgr_srv_protocol_learning(uint16_t uid, 
                                             COMM_MGR_SUBMSG_LEARNING_ACTION_TYPE action, uint16_t dst_uid);
+static COMM_MGR_SRV_ERR __comm_mgr_srv_protocol_anc_learning(uint16_t dst_uid);                                            
 static COMM_MGR_SRV_ERR __comm_mgr_srv_protocol_datattransfer_ready(uint16_t uid, COMM_MGR_SRV_MSG *srv_msg);
 static boolean __comm_mgr_srv_is_uid_valid(uint16_t uid);
 static boolean __comm_mgr_srv_is_uid_static(uint16_t uid);
@@ -88,7 +90,7 @@ static COMM_MGR_SRV_PROTO_TBL* __comm_mgr_srv_protocol_uid_map_get(uint16_t uid)
 static COMM_MGR_SRV_PROTO_TBL* __comm_mgr_srv_protocol_uid_map_insert(uint16_t uid, uint32_t fd);
 static COMM_MGR_SRV_ERR __comm_mgr_srv_protocol_uid_map_remove(uint16_t uid);
 
-static COMM_MGR_SRV_MASTER* __comm_mgr_srv_protocol_get_master(void);
+static COMM_MGR_SRV_MASTER* __comm_mgr_srv_protocol_get_master(COMM_MGR_SRV_MASTER_CONFLICT_TYPE type, void *arg);
 static COMM_MGR_SRV_ERR __comm_mgr_srv_forward_data(COMM_MGR_SRV_MSG *srv_msg);
 static COMM_MGR_SRV_ERR __comm_mgr_srv_send_msg(COMM_MGR_MSG_HDR *hdr, char *payload);
 /************************************************************************/

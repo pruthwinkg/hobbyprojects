@@ -271,6 +271,8 @@ COMM_MGR_SRV_ERR comm_mgr_srv_accept_clients(uint16_t masterID) {
 
 	listen_sd = master->__masterFd;
 
+    COMM_MGR_SRV_DEBUG("Listen FD[%d] for MasterID [%d]", listen_sd, masterID);
+
    	/*************************************************************/
    	/* Initialize the master fd_set                              */
    	/*************************************************************/
@@ -441,7 +443,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_accept_clients(uint16_t masterID) {
                             
                             // Add this event to the HouseKeeping DSID
                             if (master->__dsid_cb[COMM_MGR_SRV_DSID_HOUSEKEEP]) {
-                                COMM_MGR_SRV_UDS_HK_JOB *hk_job = (COMM_MGR_SRV_UDS_HK_JOB*)malloc(sizeof(COMM_MGR_SRV_UDS_HK_JOB));
+                                COMM_MGR_SRV_HK_JOB *hk_job = (COMM_MGR_SRV_HK_JOB*)malloc(sizeof(COMM_MGR_SRV_HK_JOB));
                                 hk_job->event = COMM_MGR_SRV_HOUSEKEEP_EVENT_CLIENT_DOWN;
                                 hk_job->eventData = (uint32_t *)malloc(sizeof(uint32_t));
                                 *(uint32_t *)(hk_job->eventData) = i; // copy the server fd
@@ -677,7 +679,7 @@ int main() {
     COMM_MGR_SRV_MASTER_INSTANCE uds_instances[UDS_MASTER_NUM_OF_INSTANCES];
 
     uds_instances[0] = COMM_MGR_SRV_MASTER_DEFAULT_UDS;
-    //uds_instances[1] = COMM_MGR_SRV_MASTER_SECONDARY_UDS;
+    uds_instances[1] = COMM_MGR_SRV_MASTER_SECONDARY_UDS;
 
     ret = comm_mgr_srv_create_uds_master(uds_masterID, uds_instances, UDS_MASTER_NUM_OF_INSTANCES, TRUE); // Enable loadsharing
     if (ret != COMM_MGR_SRV_SUCCESS) {

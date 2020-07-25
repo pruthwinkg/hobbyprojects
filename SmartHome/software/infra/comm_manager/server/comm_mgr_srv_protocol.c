@@ -225,8 +225,9 @@ COMM_MGR_SRV_ERR comm_mgr_srv_protocol_process_packet(COMM_MGR_SRV_MSG *srv_msg)
             ret =__comm_mgr_srv_protocol_process_ack_packet(srv_msg);
             break;
         case COMM_MGR_MSG_DATA:
+        case COMM_MGR_MSG_ANCILLARY:
             ret =__comm_mgr_srv_protocol_process_data_packet(srv_msg);
-            break;
+            break;            
         default:
             COMM_MGR_SRV_DEBUG("Invalid comm msg type");
             return COMM_MGR_SRV_PROTO_BAD_PACKET;
@@ -562,6 +563,12 @@ static COMM_MGR_SRV_ERR __comm_mgr_srv_protocol_process_data_packet(COMM_MGR_SRV
     COMM_MGR_SRV_ERR ret = COMM_MGR_SRV_SUCCESS;
     COMM_MGR_SRV_PROTO_TBL *proto_tbl = __comm_mgr_srv_protocol_uid_map_get(srv_msg->msg->hdr.src_uid);
     if (proto_tbl == NULL) { //  case 1 : New UID discovered
+        // If an Ancillary message comes without a pre-exisitng entry in protocol table, drop it
+        if(srv_msg->msg->hdr.msg_type == COMM_MGR_MSG_ANCILLARY) {
+            COMM_MGR_SRV_ERROR("Received Ancillary message before the UID [%d] was discovered",srv_msg->msg->hdr.src_uid);
+            return COMM_MGR_SRV_PROTO_BAD_PACKET;
+        }
+
         COMM_MGR_SRV_DEBUG("Client UID [%d] connecting to the Communication Manager for the first time (dst_uid [%d])",
                                                 srv_msg->msg->hdr.src_uid, srv_msg->msg->hdr.dst_uid);
         proto_tbl = __comm_mgr_srv_protocol_uid_map_insert(srv_msg->msg->hdr.src_uid, srv_msg->server_fd); 
@@ -589,6 +596,48 @@ static COMM_MGR_SRV_ERR __comm_mgr_srv_protocol_process_data_packet(COMM_MGR_SRV
 
     // If the control comes here, it means that src uid has been Discovered.
     // Call the state machine with COMM_MGR_PROTO_DATATRANSFER_READY state
+    // Also, if it is an Ancillary message, add the Server FD of Ancillary Channel to the protcol table for the UID
+    if(srv_msg->msg->hdr.msg_type == COMM_MGR_MSG_ANCILLARY) {
+        if (proto_tbl->server_anc_fd == -1) { // If Not yet updated, update it
+            proto_tbl->server_anc_fd = srv_msg->server_fd;
+        }
+
+        // If the Dest UID is of Communication Manager, then no need to forward the packet. This happens when the 
+        // src_uid has sent an response to an Ancillary Learning message request from Communication Manager
+        // Just drop this packet and start processing any pending previous messages. Now they can be forwarded
+        if(srv_msg->msg->hdr.dst_uid == SYS_MGR_SYSTEM_UID_COMM_MANAGER) {
+            COMM_MGR_ANC_MSG *anc_msg = COMM_MGR_GET_ANC_MSG(srv_msg->msg); 
+            // Check who is Master instance of this task
+            COMM_MGR_SRV_MASTER *master = __comm_mgr_srv_protocol_get_master(COMM_MGR_SRV_MASTER_CONFLICT_MSG, (void *)srv_msg);
+           
+            if(anc_msg->hdr.anc_msg_type == COMM_MGR_ANC_MSG_SYSTEM_INFO) {
+                srv_msg->action |= COMM_MGR_SRV_MSG_ACTION_DROP; // We are done using this. Drop it
+
+                // Now we need to ask the Master instance to process the previously saved messages again
+                // We will ask the Housekeeper to move all the Ancillary destined to this Dest UID to be moved
+                // from Transit DSID to Send DSID and finally send an event to the response handler
+                if (master->__dsid_cb[COMM_MGR_SRV_DSID_HOUSEKEEP]) {
+                    COMM_MGR_SRV_HK_JOB *hk_job = (COMM_MGR_SRV_HK_JOB*)malloc(sizeof(COMM_MGR_SRV_HK_JOB));
+                    COMM_MGR_SRV_TRANSIT_ENTRY *transit_entry = (COMM_MGR_SRV_TRANSIT_ENTRY*)malloc(sizeof(COMM_MGR_SRV_TRANSIT_ENTRY));
+                    hk_job->event = COMM_MGR_SRV_HOUSEKEEP_EVENT_FWD_ANC_TRANSIT;
+                    transit_entry->masterID = master->__masterID; 
+                    transit_entry->which_dst = COMM_MGR_SRV_TRANSIT_SELECT_SPECIFIC;
+                    transit_entry->dst_uid = srv_msg->msg->hdr.src_uid; //copy the src UID. This will be dest for transit
+                    transit_entry->which_src = COMM_MGR_SRV_TRANSIT_SELECT_NONE;
+                    transit_entry->src_uid = 0;
+                    hk_job->eventData = (void *)transit_entry;
+                    master->__dsid_cb[COMM_MGR_SRV_DSID_HOUSEKEEP](master->__DSID[COMM_MGR_SRV_DSID_HOUSEKEEP], (void *)hk_job, NULL, NULL);
+                } else {
+                    COMM_MGR_SRV_ERROR("DSID [%s] Callback not set. Not sending the house keeping job to Master ID %d",
+                                             DECODE_ENUM(COMM_MGR_SRV_DSID, COMM_MGR_SRV_DSID_HOUSEKEEP), master->__masterID); 
+                }
+
+                return COMM_MGR_SRV_SUCCESS;
+            }
+            return COMM_MGR_SRV_PROTO_BAD_PACKET; // Currently there is no other use case where it should come here.
+        }
+    }
+
     ret = comm_mgr_srv_protocol_statemachine(proto_tbl->proto_state, srv_msg->msg->hdr.src_uid, srv_msg);
 
     return ret;
@@ -718,8 +767,38 @@ static COMM_MGR_SRV_ERR __comm_mgr_srv_protocol_learning(uint16_t uid,
     COMM_MGR_SRV_DEBUG("Sending learning message for UID [%d], action [%d], dst_uid [%d]", uid, action, dst_uid);
 
     ret = __comm_mgr_srv_send_msg(&hdr, (char *)payload);
-
+    return ret;
 }
+
+/*
+    This function is used to send Ancillary Learning message to Dest UID
+*/
+static COMM_MGR_SRV_ERR __comm_mgr_srv_protocol_anc_learning(uint16_t dst_uid) {
+    COMM_MGR_SRV_ERR ret = COMM_MGR_SRV_SUCCESS;
+    COMM_MGR_MSG_HDR hdr;
+    COMM_MGR_SRV_PROTO_TBL *proto_tbl = __comm_mgr_srv_protocol_uid_map_get(dst_uid);
+
+    memset(&hdr, 0, sizeof(COMM_MGR_MSG_HDR));
+
+    if(proto_tbl == NULL) { // This should NEVER happen
+        COMM_MGR_SRV_ERROR("Unable to find protocol table for uid [%d]", dst_uid); 
+        return COMM_MGR_SRV_PROTO_ERR;
+    }
+
+    hdr.src_uid = SYS_MGR_SYSTEM_UID_COMM_MANAGER;
+    hdr.dst_uid = dst_uid;
+    hdr.msg_type = COMM_MGR_MSG_PROTOCOL;
+    hdr.submsg_type = COMM_MGR_SUBMSG_ANC_LEARNING;
+    hdr.priority = COMM_MGR_MSG_PRIORITY_HIGH;
+    hdr.ack_required = FALSE;
+    hdr.payloadSize = 0;
+
+    COMM_MGR_SRV_DEBUG("Sending Ancillary learning message for UID [%d]", dst_uid);
+
+    ret = __comm_mgr_srv_send_msg(&hdr, NULL);
+    return ret;
+}
+                                                
 
 /*
     This function decides if the messages can be forwarded to the dest UID or not.
@@ -738,15 +817,42 @@ static COMM_MGR_SRV_ERR __comm_mgr_srv_protocol_datattransfer_ready(uint16_t uid
     COMM_MGR_SRV_PROTO_TBL *dest_proto_tbl = __comm_mgr_srv_protocol_uid_map_get(srv_msg->msg->hdr.dst_uid);
 
     if (dest_proto_tbl == NULL) { //  case 1 : Dest UID not discovered yet
-        // Notify the client not to send any more data packets till a learning message with start is sent
-        ret = __comm_mgr_srv_protocol_learning(uid, COMM_MGR_SUBMSG_LEARNING_ACTION_STOP, srv_msg->msg->hdr.dst_uid);
+
+        // If it is an Ancillary message, one pre-requisite is, the Dest UID should have been discovered.
+        // The src UID needs to try again later, send a learning action message with Ancillary Stop:        
+        if(srv_msg->msg->hdr.msg_type == COMM_MGR_MSG_ANCILLARY) {
+            COMM_MGR_SRV_ERROR("Dest UID [%d] is not yet discovered. So dropping the Ancillary message from Src UID [%d]",
+                                       srv_msg->msg->hdr.dst_uid, srv_msg->msg->hdr.src_uid);
+            ret = __comm_mgr_srv_protocol_learning(uid, COMM_MGR_SUBMSG_LEARNING_ACTION_ANC_STOP, srv_msg->msg->hdr.dst_uid);
+        } else {
+            // Notify the client not to send any more data packets till a learning message with start is sent
+            ret = __comm_mgr_srv_protocol_learning(uid, COMM_MGR_SUBMSG_LEARNING_ACTION_STOP, srv_msg->msg->hdr.dst_uid);
+        }
     } else { // Dest UID is already discovered/learnt
-        // We dont have to notify the src UID here. Simply forward the data to dest UID
         
+        // If its an Ancillary message, check if the Ancillary Channel Server FD exists.
+        // If not, need to send a Ancillary Learning message to dest UID
+        if (srv_msg->msg->hdr.msg_type == COMM_MGR_MSG_ANCILLARY) {
+            if(dest_proto_tbl->server_anc_fd == -1) { // Dest UIDs Ancillary channel Server FD not yet learnt
+                ret = __comm_mgr_srv_protocol_anc_learning(srv_msg->msg->hdr.dst_uid);
+                if(ret == COMM_MGR_SRV_SUCCESS) {
+                    srv_msg->action |= COMM_MGR_SRV_MSG_ACTION_HOLD; // Ask the Master instance to hold the packet
+                    return COMM_MGR_SRV_SUCCESS;
+                }
+                return ret;
+            }
+        }
+
+        // We dont have to notify the src UID here. Simply forward the data to dest UID
         COMM_MGR_SRV_DEBUG("FINALLY THE PACKETS ARE ACTUALLY GOING TO THE DESTINATION APP!!!!");
         
         // Since the data is now ready to be forwarded, put the dest fd in the srv_msg
-        srv_msg->server_fd = dest_proto_tbl->server_fd; // This actually does the magic of forwarding
+        // This actually does the magic of forwarding
+        if(srv_msg->msg->hdr.msg_type == COMM_MGR_MSG_ANCILLARY) {
+            srv_msg->server_fd = dest_proto_tbl->server_anc_fd; // Use the Server FD of Dest UID Ancillary Channel
+        } else {
+            srv_msg->server_fd = dest_proto_tbl->server_fd; // Use the Server FD of Dest UID Normal Channel
+        }
 
         ret = __comm_mgr_srv_forward_data(srv_msg); // Forward the original received message
     }
@@ -768,12 +874,13 @@ static COMM_MGR_SRV_ERR __comm_mgr_srv_forward_data(COMM_MGR_SRV_MSG *srv_msg) {
     }
 
     // Check who is Master instance of this task
-    COMM_MGR_SRV_MASTER *master = __comm_mgr_srv_protocol_get_master();
+    COMM_MGR_SRV_MASTER *master = __comm_mgr_srv_protocol_get_master(COMM_MGR_SRV_MASTER_CONFLICT_MSG, (void *)srv_msg);
 
     // Only data packets goes into the COMM_MGR_SRV_DSID_SEND
     if ((srv_msg->msg->hdr.msg_type == COMM_MGR_MSG_DATA) ||
         (srv_msg->msg->hdr.submsg_type == COMM_MGR_SUBMSG_DATA_ACK) ||
-        (srv_msg->msg->hdr.submsg_type == COMM_MGR_SUBMSG_DATA_NACK)) {
+        (srv_msg->msg->hdr.submsg_type == COMM_MGR_SUBMSG_DATA_NACK) ||
+        (srv_msg->msg->hdr.msg_type == COMM_MGR_MSG_ANCILLARY)) {
         // Insert the msg to the data queue and send event
         if(master->__dsid_cb[COMM_MGR_SRV_DSID_SEND](master->__DSID[COMM_MGR_SRV_DSID_SEND], 
                                                        (void *)srv_msg, NULL, NULL) != COMM_MGR_SRV_SUCCESS) {
@@ -880,11 +987,12 @@ static COMM_MGR_SRV_PROTO_TBL* __comm_mgr_srv_protocol_uid_map_insert(uint16_t u
 
     proto_entry->UID = uid;
     proto_entry->server_fd = fd;
+    proto_entry->server_anc_fd = -1; // This will be updated later using COMM_MGR_SUBMSG_ANC_LEARNING
     proto_entry->proto_state = COMM_MGR_PROTO_DISCOVERY_START;
     proto_entry->proto_sub_state = 0; // Ack not yet received
 
     // Check who is Master instance of this task
-    COMM_MGR_SRV_MASTER *master = __comm_mgr_srv_protocol_get_master();
+    COMM_MGR_SRV_MASTER *master = __comm_mgr_srv_protocol_get_master(COMM_MGR_SRV_MASTER_CONFLICT_FIRST, NULL);
 
     if(master == NULL) {
         COMM_MGR_SRV_ERROR("Not to able to identify the Master for the UID [%d]", uid);
@@ -946,8 +1054,15 @@ static COMM_MGR_SRV_ERR __comm_mgr_srv_protocol_uid_map_remove(uint16_t uid) {
 
     Refer the UTILS task handler lib and its sample test example to get to know
     about the API
+
+    Note: In a multi master case, when load sharing is enabled, a single task can 
+    be owned by multiple master instances. In such cases for a task to determine
+    who is my master, it becomes ambigous. In such cases, conflict are resolved
+    using a conflict vector which will be implmeneted by the type of Master instance.
+    For example in UDS type of Master instances, a vector needs to be implemented which
+    will be very specific for that type of Master.
 */
-COMM_MGR_SRV_MASTER* __comm_mgr_srv_protocol_get_master(void) {
+COMM_MGR_SRV_MASTER* __comm_mgr_srv_protocol_get_master(COMM_MGR_SRV_MASTER_CONFLICT_TYPE type, void *arg) {
     UTILS_TASK_HANDLER_STATUS *task_st = utils_task_handler_get_taskInfo();
 
     if ((task_st == NULL) || 
@@ -956,7 +1071,17 @@ COMM_MGR_SRV_MASTER* __comm_mgr_srv_protocol_get_master(void) {
         return NULL;
     }
     // This should have been set during the Master instance creation
-    uint16_t masterID = *(uint16_t *)task_st->__task->arg;
+    uint16_t masterID = 0;
+    COMM_MGR_SRV_WORKER_ARG *workerArg = (COMM_MGR_SRV_WORKER_ARG *)task_st->__task->arg;
+    if(workerArg == NULL) {
+        return NULL;
+    }
+
+    // Check if its a multi-master case with load sharing enabled scenerio.
+    if((workerArg->num_masterFDs > 0) && (workerArg->isLoadSharingEn)) {
+        masterID = workerArg->resolver(type, arg, (void *)workerArg);
+    }        
+
     return comm_mgr_srv_get_master(masterID);
 }
 

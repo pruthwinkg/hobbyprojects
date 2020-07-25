@@ -66,6 +66,49 @@ typedef struct {
     uint32_t server_fd;
 } COMM_MGR_SRV_RECV_MSG;
 
+// The various Master instances needs use this strcuture to pass the
+// arguments to their workers. This is used to resolve conflicts to
+// determine the appropriate master instance in a load sharing scenerio.
+// In load sharing a single task can be owned by multiple masters. In such cases,
+// in any point when a task needs to determine which master instance to use,
+// decision will be made on the nature of data or action being performed and an
+// appropriate master will be used.
+typedef uint16_t (*comm_mgr_srv_master_conflict_resolver)(COMM_MGR_SRV_MASTER_CONFLICT_TYPE type, \
+                                                void *arg, void *workerArg);
+typedef struct {
+    boolean isLoadSharingEn;    
+    uint16_t *masterFDs;
+    uint8_t num_masterFDs;
+    comm_mgr_srv_master_conflict_resolver resolver;
+} COMM_MGR_SRV_WORKER_ARG;
+
+/*
+    This data structure is used internally by the Master server instance for managing
+    the jobs given to the Housekeeping task handler 
+
+    The Housekeeping jobs are identified by event. Depeding on the event, the Housekeeping 
+    task handler will perform actions using the other metadata available in the job 
+*/
+typedef struct { 
+    COMM_MGR_SRV_HOUSEKEEP_EVENT event;
+    uint8_t priority; // Lower the value, higher priority  
+    void *eventData; // event specific data 
+} COMM_MGR_SRV_HK_JOB;
+
+/*
+    Used hold data related to a Transit event job 
+
+    which_<> : which field is a wildcard entry to select all/none/specific uid 
+            Refer COMM_MGR_SRV_TRANSIT_SELECT enum type for various values 
+*/
+typedef struct {
+    uint16_t masterID;  // Transit DSID is per master
+    COMM_MGR_SRV_TRANSIT_SELECT which_dst;
+    uint16_t dst_uid;   // To which dest UIDs needs to be processed 
+    COMM_MGR_SRV_TRANSIT_SELECT which_src;
+    uint16_t src_uid;   // From which src UIDs needs to be processed
+} COMM_MGR_SRV_TRANSIT_ENTRY;
+
 /************************************************************************/
 /*                   Internal helper functions                          */
 /************************************************************************/

@@ -123,7 +123,7 @@ void* utils_ds_queue_dequeue(UTILS_DS_ID id);
 int utils_ds_queue_destroy(UTILS_DS_ID id, boolean delete_data); // Deletes FULL queue
 boolean utils_ds_queue_is_full(UTILS_DS_ID id);
 boolean utils_ds_queue_is_empty(UTILS_DS_ID id);
-
+uint32_t utils_ds_queue_get_count(UTILS_DS_ID id);
 // Linked List functions
 
 
