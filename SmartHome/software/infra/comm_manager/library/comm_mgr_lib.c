@@ -725,6 +725,7 @@ static COMM_MGR_LIB_ERR __comm_mgr_lib_protocol_handler(COMM_MGR_LIB_CLIENT *cli
             break;
         case COMM_MGR_SUBMSG_ANC_LEARNING:
             __comm_mgr_lib_protocol_anc_learning(client, msg);
+            break;
         default:
             COMM_MGR_LIB_ERROR("Received a bad protocol packet"); 
             return COMM_MGR_LIB_PROTO_BAD_PACKET;
