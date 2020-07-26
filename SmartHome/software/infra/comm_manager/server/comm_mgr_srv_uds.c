@@ -759,8 +759,26 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_transit_event(uint8_t ev, void *arg) {
                     COMM_MGR_SRV_MSG *srv_msg = (COMM_MGR_SRV_MSG *)utils_ds_queue_dequeue(master->__DSID[COMM_MGR_SRV_DSID_TRANSIT]);
                     if(srv_msg->msg->hdr.dst_uid != dst_uid) { // Re-enqueue 
                         master->__dsid_cb[COMM_MGR_SRV_DSID_TRANSIT](master->__DSID[COMM_MGR_SRV_DSID_TRANSIT], (void *)srv_msg, NULL, NULL);                                      
-                    } else { // Move to Send DSID (It will send event as well)
-                        master->__dsid_cb[COMM_MGR_SRV_DSID_SEND](master->__DSID[COMM_MGR_SRV_DSID_SEND], (void *)srv_msg, NULL, NULL); 
+                    } else { // Now re-send the packet for processing again.
+                        ret = comm_mgr_srv_protocol_process_packet(srv_msg);
+                        if(ret != COMM_MGR_SRV_SUCCESS) { // For any error case, just drop the packet
+                            srv_msg->action = COMM_MGR_SRV_MSG_ACTION_DROP;
+                            comm_mgr_srv_msg_action(srv_msg); // Drop the packet
+                        } else if (ret == COMM_MGR_SRV_SUCCESS) {
+                            // Check if any actions is requested by Comm Mgr Core
+                            if (srv_msg->action & COMM_MGR_SRV_MSG_ACTION_HOLD) {
+                                // Add this packet to the Transit DSID
+                                if (master->__dsid_cb[COMM_MGR_SRV_DSID_TRANSIT]) {
+                                    master->__dsid_cb[COMM_MGR_SRV_DSID_TRANSIT](master->__DSID[COMM_MGR_SRV_DSID_TRANSIT], (void *)srv_msg, NULL, NULL);
+                                } else {
+                                    // If the Transit DSID not present, just drop the packet
+                                    COMM_MGR_SRV_DEBUG("Master instance doesn't have a Transit DSID to perform HOLD on packet. Dropping the packet");
+                                    srv_msg->action = COMM_MGR_SRV_MSG_ACTION_DROP;
+                                    comm_mgr_srv_msg_action(srv_msg); // Drop the packet 
+                                }
+                            }
+                        }                   
+                        //master->__dsid_cb[COMM_MGR_SRV_DSID_SEND](master->__DSID[COMM_MGR_SRV_DSID_SEND], (void *)srv_msg, NULL, NULL); 
                     }
                 }
             }

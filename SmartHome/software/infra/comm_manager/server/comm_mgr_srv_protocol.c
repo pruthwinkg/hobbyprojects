@@ -298,6 +298,7 @@ void comm_mgr_srv_msg_action(COMM_MGR_SRV_MSG *srv_msg) {
     
     switch(srv_msg->action) {
         case COMM_MGR_SRV_MSG_ACTION_DROP:
+            comm_mgr_destroy_msg(srv_msg->msg);
             free(srv_msg);
             break;
         default:
