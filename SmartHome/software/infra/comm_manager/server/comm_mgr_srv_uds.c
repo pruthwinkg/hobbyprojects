@@ -588,9 +588,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_process_events(uint16_t masterID, boolean isLo
                         // Check if any actions is requested by Comm Mgr Core
                         if (comm_mgr_srv_msg->action & COMM_MGR_SRV_MSG_ACTION_HOLD) {
                             // Add this packet to the Transit DSID
-                            if (master->__dsid_cb[COMM_MGR_SRV_DSID_TRANSIT]) {
-                                master->__dsid_cb[COMM_MGR_SRV_DSID_TRANSIT](master->__DSID[COMM_MGR_SRV_DSID_TRANSIT], (void *)comm_mgr_srv_msg, NULL, NULL);
-                            } else {
+                            if(__comm_mgr_srv_uds_insert_transit_packet((void *)comm_mgr_srv_msg) != COMM_MGR_SRV_SUCCESS) {
                                 // If the Transit DSID not present, just drop the packet
                                 COMM_MGR_SRV_DEBUG("Master instance doesn't have a Transit DSID to perform HOLD on packet. Dropping the packet");
                                 uds_msg->action = UDS_MASTER_MSG_ACTION_DROP;
@@ -895,5 +893,22 @@ static void __comm_mgr_srv_uds_msg_free(COMM_MGR_SRV_UDS_MSG *uds_msg) {
 
     comm_mgr_destroy_msg(uds_msg->msg);
     free(uds_msg);
+}
+
+static COMM_MGR_SRV_ERR __comm_mgr_srv_uds_insert_transit_packet(void *msg) {
+    // Check who can be the correct Master instance of this task for this particular msg type
+    COMM_MGR_SRV_MASTER *master = comm_mgr_srv_protocol_get_master(COMM_MGR_SRV_MASTER_CONFLICT_MSG, (void *)msg);
+
+    if(master == NULL) {
+        COMM_MGR_SRV_ERROR("Unable to find a master. Mostly, something really bad has happened during UDS Master intialization");
+        return COMM_MGR_SRV_UDS_MASTER_INIT_ERR;
+    }
+
+    if (master->__dsid_cb[COMM_MGR_SRV_DSID_TRANSIT]) {
+        master->__dsid_cb[COMM_MGR_SRV_DSID_TRANSIT](master->__DSID[COMM_MGR_SRV_DSID_TRANSIT], msg, NULL, NULL);
+    } else {
+        return COMM_MGR_SRV_UTILS_DSID_ERR;
+    }
+    return COMM_MGR_SRV_SUCCESS;
 }
 

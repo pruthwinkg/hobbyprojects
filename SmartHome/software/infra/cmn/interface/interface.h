@@ -6,15 +6,13 @@
 #define INCLUDE_INTERFACE_LIB_H__
 
 #include "logging.h"
+#include "interface_cmn.h"
 
 #define INTERFACE_LOG_ERROR  LOG_ERROR
 #define INTERFACE_LOG_TRACE  LOG_TRACE
 #define INTERFACE_LOG_DEBUG  LOG_DEBUG
 
-#define INTERFACE_QUERY_HEADER_SIZE     (6) // In bytes
-#define INTERFACE_LIB_MAGIC_NUM         (0xFACE)
 #define INTERFACE_LIB_RES_BUF_SIZE      (8096) // 8KB
-#define INTERFACE_LIB_MAX_QUERY_SIZE    (50) // In bytes
 
 typedef enum {
     INTERFACE_LIB_SUCCESS = 0,
@@ -34,7 +32,8 @@ typedef enum {
 
 /* Various supported query request types */
 typedef enum {
-    INTERFACE_LIB_QUERY_REQ_TYPE_TOKEN = 0, // easy and faster 
+    INTERFACE_LIB_QUERY_REQ_TYPE_TOKEN = 0, // easy and faster
+    INTERFACE_LIB_QUERY_REQ_TYPE_SPLIT_QUERY, // Full query is split into many words
     INTERFACE_LIB_QUERY_REQ_TYPE_FULL_QUERY
 } INTERFACE_LIB_QUERY_REQ_TYPE;
 
@@ -58,7 +57,8 @@ typedef struct {
 } INTERFACE;
 
 typedef struct {
-    uint16_t magic_num;
+    uint16_t magic_num; // 2 byte
+    char identifier[INTERFACE_LIB_IDENTIFIER_SIZE]; // 2 byte
     uint8_t query_type; // 1 byte (INTERFACE_LIB_QUERY_TYPE)
     uint8_t query_req; // Query request format (INTERFACE_LIB_QUERY_REQ_TYPE)
     uint16_t response_loc; // 2 byte

@@ -609,7 +609,7 @@ static COMM_MGR_SRV_ERR __comm_mgr_srv_protocol_process_data_packet(COMM_MGR_SRV
         if(srv_msg->msg->hdr.dst_uid == SYS_MGR_SYSTEM_UID_COMM_MANAGER) {
             COMM_MGR_ANC_MSG *anc_msg = COMM_MGR_GET_ANC_MSG(srv_msg->msg); 
             // Check who is Master instance of this task
-            COMM_MGR_SRV_MASTER *master = __comm_mgr_srv_protocol_get_master(COMM_MGR_SRV_MASTER_CONFLICT_MSG, (void *)srv_msg);
+            COMM_MGR_SRV_MASTER *master = comm_mgr_srv_protocol_get_master(COMM_MGR_SRV_MASTER_CONFLICT_MSG, (void *)srv_msg);
            
             if(anc_msg->hdr.anc_msg_type == COMM_MGR_ANC_MSG_SYSTEM_INFO) {
                 srv_msg->action |= COMM_MGR_SRV_MSG_ACTION_DROP; // We are done using this. Drop it
@@ -875,7 +875,7 @@ static COMM_MGR_SRV_ERR __comm_mgr_srv_forward_data(COMM_MGR_SRV_MSG *srv_msg) {
     }
 
     // Check who is Master instance of this task
-    COMM_MGR_SRV_MASTER *master = __comm_mgr_srv_protocol_get_master(COMM_MGR_SRV_MASTER_CONFLICT_MSG, (void *)srv_msg);
+    COMM_MGR_SRV_MASTER *master = comm_mgr_srv_protocol_get_master(COMM_MGR_SRV_MASTER_CONFLICT_MSG, (void *)srv_msg);
 
     // Only data packets goes into the COMM_MGR_SRV_DSID_SEND
     if ((srv_msg->msg->hdr.msg_type == COMM_MGR_MSG_DATA) ||
@@ -993,7 +993,7 @@ static COMM_MGR_SRV_PROTO_TBL* __comm_mgr_srv_protocol_uid_map_insert(uint16_t u
     proto_entry->proto_sub_state = 0; // Ack not yet received
 
     // Check who is Master instance of this task
-    COMM_MGR_SRV_MASTER *master = __comm_mgr_srv_protocol_get_master(COMM_MGR_SRV_MASTER_CONFLICT_FIRST, NULL);
+    COMM_MGR_SRV_MASTER *master = comm_mgr_srv_protocol_get_master(COMM_MGR_SRV_MASTER_CONFLICT_FIRST, NULL);
 
     if(master == NULL) {
         COMM_MGR_SRV_ERROR("Not to able to identify the Master for the UID [%d]", uid);
@@ -1063,7 +1063,7 @@ static COMM_MGR_SRV_ERR __comm_mgr_srv_protocol_uid_map_remove(uint16_t uid) {
     For example in UDS type of Master instances, a vector needs to be implemented which
     will be very specific for that type of Master.
 */
-COMM_MGR_SRV_MASTER* __comm_mgr_srv_protocol_get_master(COMM_MGR_SRV_MASTER_CONFLICT_TYPE type, void *arg) {
+COMM_MGR_SRV_MASTER* comm_mgr_srv_protocol_get_master(COMM_MGR_SRV_MASTER_CONFLICT_TYPE type, void *arg) {
     UTILS_TASK_HANDLER_STATUS *task_st = utils_task_handler_get_taskInfo();
 
     if ((task_st == NULL) || 

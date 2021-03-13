@@ -65,6 +65,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_uds_transit_event(uint8_t ev, void *arg);
 static COMM_MGR_SRV_ERR __comm_mgr_srv_uds_msg_action(COMM_MGR_SRV_UDS_MSG *uds_msg);
 static COMM_MGR_SRV_UDS_MSG* __comm_mgr_srv_uds_msg_create(void *msg, uint32_t server_fd);
 static void __comm_mgr_srv_uds_msg_free(COMM_MGR_SRV_UDS_MSG *uds_msg);
+static COMM_MGR_SRV_ERR __comm_mgr_srv_uds_insert_transit_packet(void *msg);
 
 
 

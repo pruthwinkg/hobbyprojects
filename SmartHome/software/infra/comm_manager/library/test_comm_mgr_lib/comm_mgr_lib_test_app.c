@@ -339,7 +339,7 @@ COMM_MGR_LIB_TEST_APP_ERR comm_mgr_test_app_process_comm_msg(COMM_MGR_MSG *comm_
 
     
 
-#if 0
+#if 1
     uint16_t word0 = *(uint16_t *)&(comm_msg->payload[0]);
     uint16_t req_uid = comm_msg->hdr.src_uid;
     uint16_t res_uid = comm_msg->hdr.dst_uid;

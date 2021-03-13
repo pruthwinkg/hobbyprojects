@@ -31,7 +31,7 @@
 #define SHELL_APP_TOK_DELIM         " \t\r\n\a" // Various valid delimiters in a user cmd
 
 #define SHELL_APP_OUT_FILE_LOC      "/tmp"
-#define SHELL_APP_MAX_SEND_BUF_SIZE     (20)
+#define SHELL_APP_MAX_SEND_BUF_SIZE     (INTERFACE_QUERY_HEADER_SIZE+INTERFACE_LIB_MAX_QUERY_SIZE)
 
 extern UTILS_TASK_HANDLER shell_app_workers[SHELL_APP_TASK_ID_MAX];
 
@@ -43,11 +43,15 @@ typedef enum {
     SHELL_APP_ARGS_USAGE_RESERVED = 0xCC,
 } SHELL_APP_ARGS_USAGE;
 
+#define SHELL_APP_NORMAL_MODE_CLIENT        0
+#define SHELL_APP_ANCILLARY_MODE_CLIENT     1
+
 typedef struct {
     char shell_name[10];            // Usser defined name for the shell
     UTILS_DS_ID *__DSID;            // Array of DSIDs
     shell_app_dsid_cb *__dsid_cb;   // Array of Call back functions
-    COMM_MGR_LIB_CLIENT_ID cid;     // Comm Lib CID associated with shell
+    COMM_MGR_LIB_CLIENT_ID *cid;    // Comm Lib CIDs associated with shell
+    uint8_t num_cid;                // Number of CIDs used in this shell
     char *line;                     // Buffer to hold user command
     char **args[SHELL_APP_MAX_CMDS];// Buffer to hold the user commands arguments
     SHELL_APP_ARGS_USAGE args_usage[SHELL_APP_MAX_CMDS]; // A bitmap to indicate about the usage of args[]

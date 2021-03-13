@@ -13,6 +13,18 @@ UTILS_TASK_HANDLER shell_app_workers[] =
         .eventEnable = FALSE,
     	//.reg_event_cb = ,
     },
+   	{   
+    	/*  
+        	Description : This task is dedicated to handle communication       
+    	*/
+        .taskID = SHELL_APP_TASK_ID_ANC_COMM,
+        .handler = shell_app_communication_handler,
+        .attr = NULL,
+        .arg = NULL,
+        .eventEnable = FALSE,
+    	//.reg_event_cb = ,
+    },
+   
     {
        /*
             Description: This task is dedicated to handle request from User

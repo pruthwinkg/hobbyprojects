@@ -29,6 +29,7 @@ BEGIN_ENUM(SHELL_APP_SYSTEM_TASK) {
 
 BEGIN_ENUM(SHELL_APP_TASK_ID) {
     ADD_ENUM_STR(SHELL_APP_TASK_ID_COMM, "Shell Communication Handler")
+    ADD_ENUM_STR(SHELL_APP_TASK_ID_ANC_COMM, "Shell Ancillary Communication Handler")
     ADD_ENUM_STR(SHELL_APP_TASK_ID_REQ, "Shell Request Handler")
     ADD_ENUM_STR(SHELL_APP_TASK_ID_PROCESS, "Shell Process Handler")
     ADD_ENUM(SHELL_APP_TASK_ID_MAX)

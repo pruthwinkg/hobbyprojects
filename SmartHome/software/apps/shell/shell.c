@@ -5,6 +5,10 @@
 
 #include <unistd.h>
 #include "shell.h"
+#include "interface_cmn.h"
+
+extern inline uint16_t interface_lib_get_query(uint16_t id, uint8_t type, uint8_t req_type,
+                                              uint16_t res_loc, void *query, uint8_t query_len, char *buf);
 
 static SHELL_APP *shell_app;
 boolean shell_app_communication_on = FALSE;
@@ -277,7 +281,8 @@ SHELL_APP_ERR shell_app_send_discovery() {
         sleep(5);
     }
 
-	if(comm_mgr_lib_send_data(shell_app->cid, SMARTHOME_SUBSYSTEM_COMM_MANAGER, &dummy_buf, 1) != COMM_MGR_LIB_SUCCESS ) { 
+	if(comm_mgr_lib_send_data(shell_app->cid[SHELL_APP_NORMAL_MODE_CLIENT], 
+                        SMARTHOME_SUBSYSTEM_COMM_MANAGER, &dummy_buf, 1) != COMM_MGR_LIB_SUCCESS ) { 
 		SHELL_APP_ERROR("Failed to send the discovery");
         return SHELL_APP_FAILURE;
 	}
@@ -323,6 +328,11 @@ SHELL_APP_ERR shell_app_send_user_cmd(uint8_t slot, uint16_t dst_uid, SHELL_APP_
 	char full_query[SHELL_APP_MAX_CMD_SIZE];
 	memset(full_query, 0, sizeof(full_query));
 	uint8_t i = 0, len = 0;
+    int num_fds = 1;
+    int fds[1];
+    uint8_t num_vector = 1;
+    void *anc_data[1];
+    uint8_t anc_datalen[1];
 
 	// Form the full_query again from tokens
 	while(strcmp(shell_app->args[slot][i], "")) {
@@ -333,6 +343,7 @@ SHELL_APP_ERR shell_app_send_user_cmd(uint8_t slot, uint16_t dst_uid, SHELL_APP_
 		i++;
 	}
 
+#if 0
     // Refer 'interface' library cmn/interface/interface.h for values needs to be sent
     uint16_t interface_lib_magic = 0xFACE;
     memcpy(&buf[0], &interface_lib_magic, sizeof(uint16_t)); // Interfcae magic
@@ -355,12 +366,25 @@ SHELL_APP_ERR shell_app_send_user_cmd(uint8_t slot, uint16_t dst_uid, SHELL_APP_
 		strcpy(&buf[2], shell_app->args[slot][0]); // full query
 		bufsize = strlen(shell_app->args[slot][0]) +  sizeof(uint16_t);
 	}
+#endif
+
+    if(shell_app->query_req_type == 0) { 
+        shell_app_get_token_from_query(shell_app->args[slot][1], full_query, &token);
+        bufsize = interface_lib_get_query(INTERFACE_LIB_IDENTIFIER, 0, 0, fd, &token, 2, buf);
+    } else { // Full-query
+        bufsize = interface_lib_get_query(INTERFACE_LIB_IDENTIFIER, 0, 2, fd, 
+                                    shell_app->args[slot][0], strlen(shell_app->args[slot][0]), buf);
+    }        
 
 	SHELL_APP_DEBUG("Sending query [%s], token [0x%x] to dst_uid [%d], src_uid [%d], slot [%d], fd [%d]", 
 						full_query, token, dst_uid, SHELL_APP_SRC_UID, slot, fd);
 
-
-	if(comm_mgr_lib_send_data(shell_app->cid, dst_uid, buf, bufsize) != COMM_MGR_LIB_SUCCESS ) { 
+    fds[0] = fd;
+    anc_data[0] = buf;
+    anc_datalen[0] = bufsize;
+	//if(comm_mgr_lib_send_data(shell_app->cid, dst_uid, buf, bufsize) != COMM_MGR_LIB_SUCCESS ) {
+    if(comm_mgr_lib_send_anc_data(shell_app->cid[SHELL_APP_ANCILLARY_MODE_CLIENT], dst_uid, num_vector, 
+                                (char **)anc_data, anc_datalen, num_fds, fds) != COMM_MGR_LIB_SUCCESS) {
 		SHELL_APP_ERROR("Failed to send the data : %s", buf);
 	}
 	return SHELL_APP_SUCCESS;   
@@ -412,6 +436,8 @@ SHELL_APP* shell_app_init(char *name) {
 	strcpy(__shell_app->shell_name, name);
 	__shell_app->__DSID = (UTILS_DS_ID*)malloc(sizeof(UTILS_DS_ID) * SHELL_APP_DSID_MAX);
 	__shell_app->__dsid_cb = (shell_app_dsid_cb *)malloc(sizeof(shell_app_dsid_cb) * SHELL_APP_DSID_MAX);
+	__shell_app->cid = (COMM_MGR_LIB_CLIENT_ID*)malloc(sizeof(COMM_MGR_LIB_CLIENT_ID) * 2);
+	__shell_app->num_cid = 2;
 
 	__shell_app->line = (char *)malloc(sizeof(char) * SHELL_APP_MAX_CMD_SIZE);
 	memset(__shell_app->line, 0, sizeof(sizeof(char) * SHELL_APP_MAX_CMD_SIZE));
@@ -475,20 +501,32 @@ int main() {
 	client.property->comm_mgr_lib_recv_queue_size = SHELL_APP_COMM_MGR_LIB_RECV_QUEUE_SIZE;
 	client.property->comm_mgr_lib_send_queue_size = SHELL_APP_COMM_MGR_LIB_SEND_QUEUE_SIZE;
 	client.property->libInactivityTimeOut = 2; //COMM_MGR_LIB_DEFAULT_SELECT_TIMEOUT; // To increase responsiveness
-	COMM_MGR_LIB_CLIENT_ID *cid = (COMM_MGR_LIB_CLIENT_ID *)malloc(sizeof(COMM_MGR_LIB_CLIENT_ID));
-	*cid = comm_mgr_lib_create_client(&client);
 
-    if(*cid == COMM_MGR_LIB_INVALID_CLIENT) { 
+	// Create two clients. Normal and Ancillary
+	COMM_MGR_LIB_CLIENT_ID *cid = (COMM_MGR_LIB_CLIENT_ID *)malloc(sizeof(COMM_MGR_LIB_CLIENT_ID) * shell_app->num_cid);
+	cid[0] = comm_mgr_lib_create_client(&client);
+
+    if(cid[0] == COMM_MGR_LIB_INVALID_CLIENT) { 
         SHELL_APP_ERROR("Failed to create a Communication Manager library client");
         goto err;
     }	
 
-    /* Create task handlers for this test app */	
-    shell_app_workers[SHELL_APP_TASK_ID_REQ].arg = (void *)cid;
-    shell_app_workers[SHELL_APP_TASK_ID_PROCESS].arg = (void *)cid;
-    shell_app_workers[SHELL_APP_TASK_ID_COMM].arg = (void *)cid;
-	shell_app->cid = *cid;    
+    // Create one more client for ancillary communciation
+    client.ancillary = TRUE;
+    cid[1] = comm_mgr_lib_create_client(&client);
+    if(cid[1] == COMM_MGR_LIB_INVALID_CLIENT) { 
+        SHELL_APP_ERROR("Failed to create a Communication Manager library client");
+        return -1;
+    }
 
+    /* Create task handlers for this test app */	
+    shell_app_workers[SHELL_APP_TASK_ID_REQ].arg = (void *)&cid[0];
+    shell_app_workers[SHELL_APP_TASK_ID_PROCESS].arg = (void *)&cid[0];
+    shell_app_workers[SHELL_APP_TASK_ID_COMM].arg = (void *)&cid[0];
+    shell_app_workers[SHELL_APP_TASK_ID_ANC_COMM].arg = (void *)&cid[1];
+
+	shell_app->cid[0] = cid[0];    
+	shell_app->cid[1] = cid[1]; 
 
 	if(utils_task_handlers_create(SHELL_APP_TASK_ID_MAX, shell_app_workers, 
                                 SHELL_APP_LOCAL_EVENT_MAX, SHELL_APP_GLOBAL_EVENT_MAX) < 0) {

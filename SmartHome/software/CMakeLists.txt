@@ -9,7 +9,9 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 include_directories("${CMAKE_SOURCE_DIR}/smarthome")
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/infra/system_manager")
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/infra/comm_manager")
-include_directories("${CMAKE_CURRENT_SOURCE_DIR}/infra/cmn")
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/infra/cmn/logging")
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/infra/cmn/utils")
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/infra/cmn/interface")
 
 
 if(EnableTestCode)

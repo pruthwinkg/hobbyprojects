@@ -566,8 +566,8 @@ static COMM_MGR_LIB_ERR  __comm_mgr_lib_receive_packets(COMM_MGR_LIB_CLIENT_ID i
         return COMM_MGR_LIB_BAD_PACKET;
     }
 
-    COMM_MGR_LIB_DEBUG("Received msg_type [%d], submsg_type [%d]", 
-                        msg->hdr.msg_type, msg->hdr.submsg_type);
+    COMM_MGR_LIB_DEBUG("CID[%d]: Received msg_type [%d], submsg_type [%d]", 
+                       COMM_MGR_LIB_GET_CLIENT_ID(id), msg->hdr.msg_type, msg->hdr.submsg_type);
 
     switch(msg->hdr.msg_type) {
         case COMM_MGR_MSG_PROTOCOL:
@@ -1365,7 +1365,7 @@ static COMM_MGR_LIB_ERR __comm_mgr_lib_server_communicator_with_select(COMM_MGR_
                 }
 
                 if (cmn_rc == COMM_MGR_CMN_FAILURE) {
-                    if (errno != EWOULDBLOCK) {
+                    if ((errno != EAGAIN) && (errno != EWOULDBLOCK))  {
                             COMM_MGR_LIB_ERROR("recv() failed");
                             goto cleanup_and_exit;
                     }
@@ -1429,8 +1429,8 @@ static COMM_MGR_LIB_ERR __comm_mgr_lib_server_communicator_with_select(COMM_MGR_
                 }
 
                 if(cmn_rc == COMM_MGR_CMN_SUCCESS) {
-                    COMM_MGR_LIB_DEBUG("Sent the message, type [%d], subtype [%d] to Communication Manager successfully",
-                                            msg->hdr.msg_type, msg->hdr.submsg_type);
+                    COMM_MGR_LIB_DEBUG("CID[%d]: Sent the message, type [%d], subtype [%d] to Communication Manager successfully",
+                                            cid, msg->hdr.msg_type, msg->hdr.submsg_type);
                 }
             } while(cmn_rc == COMM_MGR_CMN_SUCCESS);
         }

@@ -79,7 +79,7 @@ INTERFACE_LIB_ERR interface_lib_process_query(uint16_t req_uid, uint16_t res_uid
     INTERFACE_QUERY query;
     char full_query[INTERFACE_LIB_MAX_QUERY_SIZE];
     memset(full_query, 0, sizeof(full_query));
-    query.query = &full_query;
+    query.query = full_query;
     
     memcpy(&query, buf, INTERFACE_QUERY_HEADER_SIZE);
     memcpy(full_query, buf+INTERFACE_QUERY_HEADER_SIZE, bufsize-INTERFACE_QUERY_HEADER_SIZE);

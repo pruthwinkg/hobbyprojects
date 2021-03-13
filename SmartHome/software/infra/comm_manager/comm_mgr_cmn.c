@@ -109,6 +109,7 @@ COMM_MGR_MSG* comm_mgr_create_anc_msg(uint16_t src_uid, uint16_t dst_uid, COMM_M
     if(num_vector > 0) {
         anc_msg->nPayloadSize = (uint8_t *)malloc(sizeof(uint8_t) * num_vector);
         memcpy(anc_msg->nPayloadSize, datalen, sizeof(uint8_t) * num_vector);
+        anc_msg->payloads = (char **)malloc(sizeof(char *) * num_vector);
 
         for(uint8_t i = 0; i < num_vector; i++) {
             anc_msg->payloads[i] = (char *)malloc(sizeof(char) * anc_msg->nPayloadSize[i]);
@@ -198,6 +199,8 @@ void comm_mgr_destroy_anc_msg(COMM_MGR_MSG *msg) {
             free(anc_msg->payloads[i]);
         }            
     }
+
+    free(anc_msg->payloads);
 }
 
 /*
