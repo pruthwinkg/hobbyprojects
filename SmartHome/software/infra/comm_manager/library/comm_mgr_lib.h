@@ -162,7 +162,7 @@ uint8_t comm_mgr_lib_get_status(uint8_t cid, COMM_MGR_LIB_STATUS_GRP grp);
 
 COMM_MGR_LIB_ERR comm_mgr_lib_send_anc_data(COMM_MGR_LIB_CLIENT_ID id, uint16_t dst_uid,
                                             uint8_t num_vector, char **data, uint8_t *datalen,
-                                            uint8_t num_fds, int *fds);
+                                            uint8_t num_fds, int *fds, COMM_MGR_ANC_MSG_TYPE msg_type);
 
 /******************************************************************************/
 /*          Internal Functions                                                */

@@ -384,7 +384,7 @@ SHELL_APP_ERR shell_app_send_user_cmd(uint8_t slot, uint16_t dst_uid, SHELL_APP_
     anc_datalen[0] = bufsize;
 	//if(comm_mgr_lib_send_data(shell_app->cid, dst_uid, buf, bufsize) != COMM_MGR_LIB_SUCCESS ) {
     if(comm_mgr_lib_send_anc_data(shell_app->cid[SHELL_APP_ANCILLARY_MODE_CLIENT], dst_uid, num_vector, 
-                                (char **)anc_data, anc_datalen, num_fds, fds) != COMM_MGR_LIB_SUCCESS) {
+                           (char **)anc_data, anc_datalen, num_fds, fds, COMM_MGR_ANC_MSG_INTERFACE) != COMM_MGR_LIB_SUCCESS) {
 		SHELL_APP_ERROR("Failed to send the data : %s", buf);
 	}
 	return SHELL_APP_SUCCESS;   

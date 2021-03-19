@@ -125,6 +125,9 @@ void comm_mgr_destroy_anc_msg(COMM_MGR_MSG *msg);
 COMM_MGR_CMN_ERR comm_mgr_send(int sock, COMM_MGR_FLAG flag, COMM_MGR_MSG *comm_msg);
 COMM_MGR_CMN_ERR comm_mgr_recv(int sock, COMM_MGR_FLAG flag, COMM_MGR_MSG **msg[], uint8_t *num_msgs);
 
+/********************************************************************************* 
+                        Internal Functions
+**********************************************************************************/ 
 static COMM_MGR_CMN_ERR __comm_mgr_send_with_ancillary_msg(int fd,
                                                            COMM_MGR_MSG_HDR *comm_hdr,
                                                            COMM_MGR_ANC_MSG *anc_msg);
@@ -132,5 +135,6 @@ static COMM_MGR_CMN_ERR __comm_mgr_recv_with_ancillary_msg(int fd,
                                                            COMM_MGR_MSG_HDR *comm_hdr,
                                                            COMM_MGR_ANC_MSG *anc_msg);
 static void comm_mgr_datastream_thread_init(void);
+static void __comm_mgr_print_AncillaryMsg_Header(struct msghdr  *msg, struct cmsghdr  *cmptr);
 
 #endif /* INCLUDE_COMM_MGR_CMN_H__ */ 

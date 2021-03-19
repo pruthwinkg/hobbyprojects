@@ -422,7 +422,8 @@ COMM_MGR_SRV_ERR comm_mgr_srv_accept_clients(uint16_t masterID) {
                         if(master->ancillary == FALSE) {
                             cmn_rc = comm_mgr_recv(i, COMM_MGR_FLAG_MODE_NORMAL, &comm_msg, &comm_num_msgs);
                         } else {
-                            cmn_rc = comm_mgr_recv(i, COMM_MGR_FLAG_MODE_FD, &comm_msg, &comm_num_msgs);
+                            cmn_rc = comm_mgr_recv(i, COMM_MGR_FLAG_MODE_FD | COMM_MGR_FLAG_MODE_VECTOR, 
+                                                            &comm_msg, &comm_num_msgs);
                         }
 						//rc = recv(i, buffer, sizeof(buffer), 0);
 						if (cmn_rc == COMM_MGR_CMN_FAILURE) {
@@ -528,8 +529,7 @@ COMM_MGR_SRV_ERR comm_mgr_srv_send_data(COMM_MGR_SRV_MASTER *master,
     }
 
     if (srv_msg->msg->hdr.msg_type == COMM_MGR_MSG_ANCILLARY) {
-        // For now only FD mode is allowed
-        rc = comm_mgr_send(srv_msg->server_fd, COMM_MGR_FLAG_MODE_FD, srv_msg->msg);
+        rc = comm_mgr_send(srv_msg->server_fd, COMM_MGR_FLAG_MODE_FD | COMM_MGR_FLAG_MODE_VECTOR, srv_msg->msg);
     } else {
         rc = comm_mgr_send(srv_msg->server_fd, COMM_MGR_FLAG_MODE_NORMAL, srv_msg->msg);
     }

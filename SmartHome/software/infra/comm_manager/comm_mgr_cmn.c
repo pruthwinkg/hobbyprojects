@@ -15,6 +15,9 @@ boolean comm_mgr_auxillary_send_en = COMM_MGR_USE_ANCILLARY_SEND;
 static pthread_key_t datastream_key;
 static pthread_once_t datastream_init_done = PTHREAD_ONCE_INIT;
 
+uint8_t __comm_mgr_anc_vec_sizes[COMM_MGR_MAX_ANCILLARY_USER_IOV];
+uint8_t __comm_mgr_psuedo_iov[COMM_MGR_MAX_ANCILLARY_RECV_BUFFER];
+
 /*
     This function creates a COMM_MGR_MSG with minimum must params. The rest
     can be set the by the Master instance / Client apps optionally
@@ -541,6 +544,7 @@ COMM_MGR_CMN_ERR comm_mgr_recv(int sock, COMM_MGR_FLAG flag, COMM_MGR_MSG **msg[
     // First receive the entire ancillary message
     char vec[COMM_MGR_MAX_ANCILLARY_USER_IOV][COMM_MGR_MAX_ANCILLARY_IOV_SIZE];
     uint8_t vec_size[COMM_MGR_MAX_ANCILLARY_USER_IOV];
+    char *vec_ptrs[COMM_MGR_MAX_ANCILLARY_USER_IOV];
     uint8_t vec_num = 0;
     uint32_t fd_arr[COMM_MGR_MAX_ANCILLARY_FD];
     uint8_t fd_num = 0;
@@ -552,7 +556,12 @@ COMM_MGR_CMN_ERR comm_mgr_recv(int sock, COMM_MGR_FLAG flag, COMM_MGR_MSG **msg[
     
     t_anc_msg.fds = fd_arr;
     t_anc_msg.nPayloadSize = vec_size;
-    t_anc_msg.payloads = (char **)vec;
+    t_anc_msg.payloads = vec_ptrs;
+
+    // Assign each row of the local 2-D array to temp anc payload
+    for (uint8_t i = 0; i < COMM_MGR_MAX_ANCILLARY_USER_IOV; i++) {
+        vec_ptrs[i] = (char *)&vec[i][0]; 
+    }
 
     rc = __comm_mgr_recv_with_ancillary_msg(sock, &comm_hdr, &t_anc_msg);
     
@@ -584,6 +593,7 @@ COMM_MGR_CMN_ERR comm_mgr_recv(int sock, COMM_MGR_FLAG flag, COMM_MGR_MSG **msg[
         anc_msg->hdr.num_vec = t_anc_msg.hdr.num_vec;
         anc_msg->nPayloadSize = malloc(sizeof(uint8_t) * t_anc_msg.hdr.num_vec);
         memcpy(anc_msg->nPayloadSize, t_anc_msg.nPayloadSize, sizeof(uint8_t) * t_anc_msg.hdr.num_vec);
+        anc_msg->payloads = (char **)malloc(sizeof(char *) * t_anc_msg.hdr.num_vec);
         for(uint8_t i = 0 ; i < anc_msg->hdr.num_vec; i++) {
             anc_msg->payloads[i] = malloc(sizeof(char) * anc_msg->nPayloadSize[i]);
             memcpy(anc_msg->payloads[i], t_anc_msg.payloads[i], sizeof(char) * anc_msg->nPayloadSize[i]);
@@ -632,11 +642,10 @@ static COMM_MGR_CMN_ERR __comm_mgr_send_with_ancillary_msg(int fd,
                                                            COMM_MGR_MSG_HDR *comm_hdr, 
                                                            COMM_MGR_ANC_MSG *anc_msg) {
     struct msghdr   msg;
-    struct iovec    iov[COMM_MGR_MAX_ANCILLARY_USER_IOV+COMM_MGR_MAX_ANCILLARY_INTERNAL_IOV];
+    struct iovec    iov[COMM_MGR_MAX_ANCILLARY_USER_IOV+COMM_MGR_MAX_ANCILLARY_INTERNAL_IOV+1];
     struct cmsghdr  *cmptr;
     ssize_t sent_bytes = 0;
     memset(&msg, 0, sizeof(msg));
-    uint8_t anc_vec_sizes[COMM_MGR_MAX_ANCILLARY_USER_IOV];
 
     if((comm_mgr_auxillary_send_en == FALSE) ||
         (anc_msg == NULL) || (comm_hdr == NULL) ||
@@ -676,24 +685,23 @@ static COMM_MGR_CMN_ERR __comm_mgr_send_with_ancillary_msg(int fd,
     iov[1].iov_len = sizeof(COMM_MGR_ANC_MSG_HDR);
 
     // For simplicity, always pack the anc_vec_sizes even if anc_msg->hdr.num_vec = 0
-    iov[2].iov_base = anc_vec_sizes;
-    iov[2].iov_len = sizeof(anc_vec_sizes);
+    iov[2].iov_base = __comm_mgr_anc_vec_sizes;
+    iov[2].iov_len = sizeof(__comm_mgr_anc_vec_sizes);
 
     msg.msg_iov = iov;
     msg.msg_iovlen = COMM_MGR_MAX_ANCILLARY_INTERNAL_IOV;
 
     for (uint8_t i = 0; i < anc_msg->hdr.num_vec; i++) {
-        anc_vec_sizes[i] = anc_msg->nPayloadSize[i];
+        __comm_mgr_anc_vec_sizes[i] = anc_msg->nPayloadSize[i];
         iov[i+COMM_MGR_MAX_ANCILLARY_INTERNAL_IOV].iov_base = anc_msg->payloads[i];
         iov[i+COMM_MGR_MAX_ANCILLARY_INTERNAL_IOV].iov_len = anc_msg->nPayloadSize[i];
-        printf("nbytes[%d] = %d, ptr[%d] = %p, data = %s\n", 
-                            i, anc_msg->nPayloadSize[i], i, anc_msg->payloads[i], anc_msg->payloads[i]);
     }       
 
     msg.msg_iov = iov; 
     msg.msg_iovlen = anc_msg->hdr.num_vec + COMM_MGR_MAX_ANCILLARY_INTERNAL_IOV;
 
     printf("niov = %d\n", anc_msg->hdr.num_vec);
+    __comm_mgr_print_AncillaryMsg_Header(&msg, cmptr);
 
     sent_bytes = sendmsg(fd, &msg, 0); 
     if(sent_bytes < 0) { 
@@ -714,9 +722,8 @@ static COMM_MGR_CMN_ERR __comm_mgr_recv_with_ancillary_msg(int fd,
     uint8_t num_recvfds_tmp = 0;
     uint16_t offset = 0;
     uint8_t i = 0;
-    uint8_t psuedo_iov[COMM_MGR_MAX_ANCILLARY_RECV_BUFFER];
-    uint8_t anc_vec_sizes[COMM_MGR_MAX_ANCILLARY_USER_IOV];
-    memset(anc_vec_sizes, 0, sizeof(anc_vec_sizes));
+    memset(__comm_mgr_anc_vec_sizes, 0, sizeof(__comm_mgr_anc_vec_sizes));
+    memset(__comm_mgr_psuedo_iov, 0, sizeof(__comm_mgr_psuedo_iov));
 
     if((comm_hdr == NULL) || (anc_msg == NULL)) {
         return COMM_MGR_CMN_INVALID_ARG;
@@ -739,12 +746,12 @@ static COMM_MGR_CMN_ERR __comm_mgr_recv_with_ancillary_msg(int fd,
     iov[1].iov_base = (char *)(&anc_msg->hdr);
     iov[1].iov_len = sizeof(COMM_MGR_ANC_MSG_HDR);
 
-    iov[2].iov_base = (char *)anc_vec_sizes;
-    iov[2].iov_len = sizeof(anc_vec_sizes);
+    iov[2].iov_base = (char *)__comm_mgr_anc_vec_sizes;
+    iov[2].iov_len = sizeof(__comm_mgr_anc_vec_sizes);
 
     // There can be multiple user IOVs in this psuedo iov
-    iov[3].iov_base = psuedo_iov;
-    iov[3].iov_len = sizeof(psuedo_iov);
+    iov[3].iov_base = __comm_mgr_psuedo_iov;
+    iov[3].iov_len = sizeof(__comm_mgr_psuedo_iov);
 
     msg.msg_iov = iov;
     msg.msg_iovlen = COMM_MGR_MAX_ANCILLARY_INTERNAL_IOV + 1; // Internal IOVs + 1 pseudo user IOV
@@ -766,10 +773,10 @@ static COMM_MGR_CMN_ERR __comm_mgr_recv_with_ancillary_msg(int fd,
 
     // Now pack the received user IOVs to the anc_msg
     for (uint8_t i = 0; i < anc_msg->hdr.num_vec; i++) {
-        printf("anc_vec_sizes[%d] = %d\n", i, anc_vec_sizes[i]);
-        memcpy(anc_msg->payloads[i], psuedo_iov+offset, anc_vec_sizes[i]);
-        anc_msg->nPayloadSize[i] = anc_vec_sizes[i]; 
-        offset = anc_vec_sizes[i]; 
+        printf("anc_vec_sizes[%d] = %d\n", i, __comm_mgr_anc_vec_sizes[i]);
+        memcpy(anc_msg->payloads[i], __comm_mgr_psuedo_iov+offset, __comm_mgr_anc_vec_sizes[i]);
+        anc_msg->nPayloadSize[i] = __comm_mgr_anc_vec_sizes[i]; 
+        offset = __comm_mgr_anc_vec_sizes[i]; 
     }    
  
     // Some control data is available
@@ -796,3 +803,23 @@ static COMM_MGR_CMN_ERR __comm_mgr_recv_with_ancillary_msg(int fd,
 static void comm_mgr_datastream_thread_init(void) {
     pthread_key_create(&datastream_key, free);
 }
+
+static void __comm_mgr_print_AncillaryMsg_Header(struct msghdr  *msg, struct cmsghdr  *cmptr) {
+    printf("\n\n----------------------------------------\n\n");
+    printf("msg.msg_control = %p\n", msg->msg_control);
+    printf("msg.msg_controllen = %ld\n", msg->msg_controllen);
+    printf("cmptr->cmsg_level = %ld\n", cmptr->cmsg_level);
+    printf("cmptr->cmsg_type = %d\n", cmptr->cmsg_type);
+    printf("cmptr->cmsg_len = %d\n", cmptr->cmsg_len);
+
+
+    printf("msg.msg_iov = %p\n", msg->msg_iov);
+    printf("msg.msg_iovlen = %ld\n", msg->msg_iovlen);
+   
+    for (uint8_t i = 0 ; i < msg->msg_iovlen; i++) {
+        printf("iov[%d].iov_base = %p\n", i, msg->msg_iov[i].iov_base);
+        printf("iov[%d].iov_len = %ld\n", i, msg->msg_iov[i].iov_len);
+    }   
+    printf("----------------------------------------\n\n");
+}
+

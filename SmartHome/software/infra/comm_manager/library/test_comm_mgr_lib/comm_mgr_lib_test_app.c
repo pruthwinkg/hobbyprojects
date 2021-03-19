@@ -196,7 +196,7 @@ void *comm_mgr_test_app_housekeeper(void *arg) {
         if(!strncmp(buf, "file", 4)) {
             int fd = fileno(f);
             if(comm_mgr_lib_send_anc_data(cid[1], TEST_COMM_MGR_LIB_DST_UID,
-                                          0, NULL, NULL, num_fds, fds) != COMM_MGR_LIB_SUCCESS) {
+                                          0, NULL, NULL, num_fds, fds, COMM_MGR_ANC_MSG_DATA) != COMM_MGR_LIB_SUCCESS) {
                 COMM_MGR_LIB_ERROR("Failed to send the data");
             }
         } else {
@@ -320,38 +320,39 @@ void comm_mgr_lib_test_app_cb(COMM_MGR_LIB_EVENT event) {
 */
 COMM_MGR_LIB_TEST_APP_ERR comm_mgr_test_app_process_comm_msg(COMM_MGR_MSG *comm_msg) {
 
-    if(comm_msg->hdr.msg_type == COMM_MGR_MSG_ANCILLARY) {
-        COMM_MGR_ANC_MSG *anc_msg = COMM_MGR_GET_ANC_MSG(comm_msg);
+    switch(comm_msg->hdr.msg_type) {
+        case COMM_MGR_MSG_ANCILLARY:
+        {
+            COMM_MGR_ANC_MSG *anc_msg = COMM_MGR_GET_ANC_MSG(comm_msg);
         
-        printf("Received an Ancillary message, num_fd = %d\n", anc_msg->hdr.num_fd);
-        int fd = 0;
-        char fileBuf[100];
-        memset(fileBuf, 0, sizeof(fileBuf));
-        if(anc_msg->hdr.num_fd > 0) {
-            fd = anc_msg->fds[0];
-            FILE *f = fdopen(fd, "w+");
-            fseek( f, 0, SEEK_SET );
-            fread(fileBuf, sizeof(fileBuf), 1, f);
-            printf("Content of the file = %s\n", fileBuf);
-            fclose(f);
+            if(anc_msg->hdr.anc_msg_type == COMM_MGR_ANC_MSG_INTERFACE) {
+                printf("Received an Interfacing Ancillary message, num_fd = %d\n", anc_msg->hdr.num_fd);
+                int fd = 0;
+                char fileBuf[100];
+                memset(fileBuf, 0, sizeof(fileBuf));
+                if(anc_msg->hdr.num_fd > 0) {
+                    fd = anc_msg->fds[0];
+                    FILE *f = fdopen(fd, "w+");
+                    fseek( f, 0, SEEK_SET );
+                    fread(fileBuf, sizeof(fileBuf), 1, f);
+                    printf("Content of the file = %s\n", fileBuf);
+                    fclose(f);
+                }
+                uint16_t req_uid = comm_msg->hdr.src_uid;
+                uint16_t res_uid = comm_msg->hdr.dst_uid;
+                char *buf = anc_msg->payloads[0];
+                uint16_t bufsize = anc_msg->nPayloadSize[0];
+
+                if(interface_lib_process_query(req_uid, res_uid, buf, bufsize) != INTERFACE_LIB_SUCCESS) {
+                    printf("Failed to process the interfacing message\n");
+                }
+            }
         }
-    }        
-
-    
-
-#if 1
-    uint16_t word0 = *(uint16_t *)&(comm_msg->payload[0]);
-    uint16_t req_uid = comm_msg->hdr.src_uid;
-    uint16_t res_uid = comm_msg->hdr.dst_uid;
-    uint16_t bufsize = comm_msg->hdr.payloadSize;
-    char *buf = comm_msg->payload;
-
-    if (word0 == 0xFACE) { // This is a interface message
-        interface_lib_process_query(req_uid, res_uid, buf, bufsize);
-    } else {
-        COMM_MGR_LIB_DEBUG("Unknown type of payload");
+        break;
+        default:
+            COMM_MGR_LIB_ERROR("Unknown type of payload");
+            return COMM_MGR_LIB_BAD_PACKET;
     }
-#endif
 
     return COMM_MGR_LIB_TEST_APP_SUCCESS;
 }

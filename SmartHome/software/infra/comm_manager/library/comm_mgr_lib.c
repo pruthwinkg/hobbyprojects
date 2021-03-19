@@ -351,7 +351,7 @@ COMM_MGR_LIB_ERR comm_mgr_lib_send_data(COMM_MGR_LIB_CLIENT_ID id, uint16_t dst_
 */
 COMM_MGR_LIB_ERR comm_mgr_lib_send_anc_data(COMM_MGR_LIB_CLIENT_ID id, uint16_t dst_uid, 
                                             uint8_t num_vector, char **data, uint8_t *datalen,
-                                            uint8_t num_fds, int *fds) {
+                                            uint8_t num_fds, int *fds, COMM_MGR_ANC_MSG_TYPE msg_type) {
 
     uint8_t cid = COMM_MGR_LIB_GET_CLIENT_ID(id);
     COMM_MGR_LIB_ERR ret = COMM_MGR_LIB_SUCCESS;
@@ -403,7 +403,7 @@ COMM_MGR_LIB_ERR comm_mgr_lib_send_anc_data(COMM_MGR_LIB_CLIENT_ID id, uint16_t 
     // fill other fileds like magic, version etc.
     COMM_MGR_ANC_MSG anc_msg;
     memset(&anc_msg, 0, sizeof(anc_msg));
-    anc_msg.hdr.anc_msg_type = COMM_MGR_ANC_MSG_DATA;
+    anc_msg.hdr.anc_msg_type = msg_type;
     anc_msg.hdr.num_fd = num_fds;
     anc_msg.hdr.num_vec = num_vector;
     anc_msg.payloads = data;
@@ -1361,7 +1361,8 @@ static COMM_MGR_LIB_ERR __comm_mgr_lib_server_communicator_with_select(COMM_MGR_
                 if(__comm_mgr_lib_clients[cid].ancillary == FALSE) {
                     cmn_rc = comm_mgr_recv(__comm_mgr_lib_clients[cid].client_ptr->__fd, COMM_MGR_FLAG_MODE_NORMAL, &recv_msg, &num_recv_msgs);
                 } else {
-                    cmn_rc = comm_mgr_recv(__comm_mgr_lib_clients[cid].client_ptr->__fd, COMM_MGR_FLAG_MODE_FD, &recv_msg, &num_recv_msgs);
+                    cmn_rc = comm_mgr_recv(__comm_mgr_lib_clients[cid].client_ptr->__fd, 
+                            COMM_MGR_FLAG_MODE_FD | COMM_MGR_FLAG_MODE_VECTOR, &recv_msg, &num_recv_msgs);
                 }
 
                 if (cmn_rc == COMM_MGR_CMN_FAILURE) {
@@ -1409,7 +1410,8 @@ static COMM_MGR_LIB_ERR __comm_mgr_lib_server_communicator_with_select(COMM_MGR_
                 if(__comm_mgr_lib_clients[cid].ancillary == FALSE) {
                     cmn_rc = comm_mgr_send(__comm_mgr_lib_clients[cid].client_ptr->__fd, COMM_MGR_FLAG_MODE_NORMAL, msg);
                 } else {
-                    cmn_rc = comm_mgr_send(__comm_mgr_lib_clients[cid].client_ptr->__fd, COMM_MGR_FLAG_MODE_FD, msg); 
+                    cmn_rc = comm_mgr_send(__comm_mgr_lib_clients[cid].client_ptr->__fd, 
+                                            COMM_MGR_FLAG_MODE_FD | COMM_MGR_FLAG_MODE_VECTOR, msg); 
                 }
                 
                 if (cmn_rc == COMM_MGR_CMN_FAILURE) {
