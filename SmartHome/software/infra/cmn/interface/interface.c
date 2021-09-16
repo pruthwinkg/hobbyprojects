@@ -54,8 +54,12 @@ INTERFACE_LIB_ERR interface_lib_init(INTERFACE_LIB_SECURE_LEVEL level, INTERFACE
     out_loc : How/where the responses should be sent back
     query : The query.
 
+    The 'arg' parameter of this function is used to pass special hints to this function.
+    But most of the times, simply the reference to the message via which this query request came in, is passed
+
 */
-INTERFACE_LIB_ERR interface_lib_process_query(uint16_t req_uid, uint16_t res_uid, char *buf, uint16_t bufsize) {    
+INTERFACE_LIB_ERR interface_lib_process_query(uint16_t req_uid, uint16_t res_uid, char *buf, 
+                                              uint16_t bufsize, void *arg) {    
     if(interface_lib_initialized == 0) {
         return INTERFACE_LIB_NOT_INTIALIZED;
     }
@@ -99,7 +103,7 @@ INTERFACE_LIB_ERR interface_lib_process_query(uint16_t req_uid, uint16_t res_uid
     // application for more pending response.
     switch(query.query_type) {
         case INTERFACE_LIB_QUERY_TYPE_TEXT:
-            rc = interface_lib_process_text_query(req_uid, res_uid, &query);
+            rc = interface_lib_process_text_query(req_uid, res_uid, &query, arg);
             break;
         case INTERFACE_LIB_QUERY_TYPE_JSON:
 
@@ -132,7 +136,8 @@ INTERFACE_LIB_ERR interface_lib_change_state(INTERFACE_LIB_STATE state) {
     The interface library takes care of writing the text responses from the apps to the
     required fd location considering factors like security level of the apps, state of library etc
 */
-static INTERFACE_LIB_ERR interface_lib_process_text_query(uint16_t req_uid, uint16_t res_uid, INTERFACE_QUERY *query) {
+static INTERFACE_LIB_ERR interface_lib_process_text_query(uint16_t req_uid, uint16_t res_uid, 
+                                                          INTERFACE_QUERY *query, void *arg) {
     if(query == NULL) {
         return INTERFACE_LIB_BAD_QUERY;
     }
@@ -140,6 +145,7 @@ static INTERFACE_LIB_ERR interface_lib_process_text_query(uint16_t req_uid, uint
     INTERFACE_LIB_ERR rc = INTERFACE_LIB_SUCCESS;
     char buf[INTERFACE_LIB_RES_BUF_SIZE];
     uint16_t bufsize = INTERFACE_LIB_RES_BUF_SIZE;
+    uint16_t flags = 0;
 
     switch (query->query_req) {
         case INTERFACE_LIB_QUERY_REQ_TYPE_TOKEN:
@@ -148,20 +154,20 @@ static INTERFACE_LIB_ERR interface_lib_process_text_query(uint16_t req_uid, uint
                 INTERFACE_LOG_ERROR("Text based Query type is not supported by the application");
                 return INTERFACE_LIB_UNSUPPORTED_QUERY_TYPE;
             }
-
-    
-            interface_lib_create_response(query->response_loc, req_uid, res_uid, 
-                                            interface_query_type_str[query->query_type], 
-                                            interface_query_req_type_str[query->query_req], query->query);
+   
+            interface_lib_create_response(query, req_uid, res_uid, arg);
             do {
                 rc = g_interface_app_cb->text_cb(INTERFACE_LIB_QUERY_REQ_TYPE_TOKEN, query->query, 
                                                 buf, bufsize);
                 
-                // Now write the response from the app to the response_loc requested by the sender app.
+                // Now ask the app to write the responses from the app to the response_type 
+                // requested by the sender app. :)
                 if (rc == INTERFACE_LIB_APP_RESPONSE_PENDING) {
-                    interface_lib_write_response(query->response_loc, buf, TRUE);
+                    INTERFACE_LIB_SET_FLAG(flags, INTERFACE_LIB_RES_IS_PENDING);
+                    g_interface_app_cb->response_cb(query->response_type, buf, arg, flags);
                 } else if (rc == INTERFACE_LIB_SUCCESS) {
-                    interface_lib_write_response(query->response_loc, buf, FALSE);
+                    INTERFACE_LIB_CLEAR_FLAG(flags, INTERFACE_LIB_RES_IS_PENDING);
+                    g_interface_app_cb->response_cb(query->response_type, buf, arg, flags);
                 } else {
                     break;
                 }
@@ -179,53 +185,21 @@ static INTERFACE_LIB_ERR interface_lib_process_text_query(uint16_t req_uid, uint
 }
 
 // Call this function once per request
-static INTERFACE_LIB_ERR interface_lib_create_response(uint16_t fd, uint16_t req_uid, uint16_t res_uid,
-                                                const char *query_type, const char *query_req_type,
-                                                const char *query) {
-    char meta_buf[8096];
-    uint16_t meta_bufsize = sizeof(meta_buf);
+static INTERFACE_LIB_ERR interface_lib_create_response(INTERFACE_QUERY *query, uint16_t req_uid, uint16_t res_uid, void *arg) {
+    char buf[8096];
+    uint16_t bufsize = sizeof(buf);
+    memset(buf, 0, bufsize);
+    uint16_t flags = 0;
 
-    // Open the response_loc
-    FILE *fp = fdopen(fd, "w+"); // This will erase the contents of the file
-    if (fp == NULL) {
-        INTERFACE_LOG_ERROR("Unable to access the response location");
-        return INTERFACE_LIB_BAD_QUERY;
-    }
+    snprintf(buf, bufsize-strlen(buf), "<Magic magic_string=\"Interface Library:\"%d\">\n", req_uid);
+    snprintf(buf+strlen(buf), bufsize-strlen(buf),"<ResponseApplication>%d</ResponseApplication>\n", res_uid);
+    snprintf(buf+strlen(buf), bufsize-strlen(buf),"<QueryType>%s</QueryType>", interface_query_type_str[query->query_type]);
+    snprintf(buf+strlen(buf), bufsize-strlen(buf),"<QueryReqType>%s</QueryReqType>\n", interface_query_req_type_str[query->query_req]);
+    snprintf(buf+strlen(buf), bufsize-strlen(buf),"<Query>%s</Query>\n", query->query);
+    snprintf(buf+strlen(buf), bufsize-strlen(buf),"<Response>\n");
 
-    fprintf(fp, "<Magic magic_string=\"Interface Library:\"%d\">\n", req_uid);
-    fprintf(fp, "<ResponseApplication>%d</ResponseApplication>\n", res_uid);
-    fprintf(fp, "<QueryType>%s</QueryType>", query_type);
-    fprintf(fp, "<QueryReqType>%s</QueryReqType>\n", query_req_type);
-    fprintf(fp, "<Query>%s</Query>\n", query);
-    fprintf(fp, "<Response>\n");
-
-    fclose(fp);
+    INTERFACE_LIB_SET_FLAG(flags, INTERFACE_LIB_RES_IS_HEADER);
+    g_interface_app_cb->response_cb(query->response_type, buf, arg, flags);
 
     return INTERFACE_LIB_SUCCESS;
 }
-
-// This function writes the final response from the application
-static INTERFACE_LIB_ERR interface_lib_write_response(uint16_t fd, const char *buf, boolean isResPending) {
-
-    FILE *fp = fdopen(fd, "a"); // Now append the responses to the file
-    if (fp == NULL) {
-        INTERFACE_LOG_ERROR("Unable to access the response location");
-        return INTERFACE_LIB_BAD_QUERY;
-    }
-
-    fprintf(fp, "%s", buf);
-
-    if(isResPending == TRUE) {
-        fclose(fp);
-        return INTERFACE_LIB_SUCCESS;
-    }
-    time_t now;
-    time(&now);
-    
-    fprintf(fp, "\n<TimeStamp>%s</TimeStamp>\n", ctime(&now));
-    fprintf(fp, "</Magic>\n");
-    fclose(fp);
-    return INTERFACE_LIB_SUCCESS;
-}
-
-

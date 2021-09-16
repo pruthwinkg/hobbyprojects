@@ -21,8 +21,11 @@ COMM_MGR_LIB_TEST_APP_ERR comm_mgr_test_app_process_events(uint16_t masterID, bo
 void comm_mgr_test_app_register_receiver_events(uint32_t taskID);
 COMM_MGR_LIB_TEST_APP_ERR comm_mgr_test_app_process_comm_msg(COMM_MGR_MSG *comm_msg);
 
-INTERFACE_LIB_ERR comm_mgr_lib_test_app_intf_text_cb(INTERFACE_LIB_QUERY_REQ_TYPE req_type, const char *query,
-                                                    char *buf, uint16_t bufsize);
+INTERFACE_LIB_ERR comm_mgr_lib_test_app_intf_req_text_cb(INTERFACE_LIB_QUERY_REQ_TYPE req_type, const char *query,
+                                                         char *buf, uint16_t bufsize);
+INTERFACE_LIB_ERR comm_mgr_lib_test_app_intf_response_cb(INTERFACE_LIB_QUERY_RES_TYPE res_type, const char *response,
+                                                         void *arg, uint16_t flags);
+INTERFACE_LIB_ERR comm_mgr_lib_test_app_intf_response_fd_type(int fd, const char *response, uint16_t flags); 
 INTERFACE_LIB_ERR comm_mgr_lib_test_app_intf_process_token_query(uint16_t token, char *buf, uint16_t bufsize);
 INTERFACE_LIB_ERR comm_mgr_lib_test_app_intf_process_full_query(const char *query, char *buf, uint16_t bufsize);
 

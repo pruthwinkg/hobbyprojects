@@ -52,7 +52,8 @@ int main() {
     comm_mgr_lib_init(LOG_LVL_DEBUG, TEST_COMM_MGR_LIB_SRC_UID, FALSE);
 
     memset(&intf_lib_app_cb, 0, sizeof(INTERFACE_APP_CB));
-    intf_lib_app_cb.text_cb = comm_mgr_lib_test_app_intf_text_cb;
+    intf_lib_app_cb.text_cb = comm_mgr_lib_test_app_intf_req_text_cb;
+    intf_lib_app_cb.response_cb = comm_mgr_lib_test_app_intf_response_cb;
     if(interface_lib_init(INTERFACE_LIB_SECURE_LEVEL_UNSECURE, &intf_lib_app_cb) != INTERFACE_LIB_SUCCESS) {
         COMM_MGR_LIB_TRACE("Failed to initialize the interface library");
     }
@@ -327,23 +328,12 @@ COMM_MGR_LIB_TEST_APP_ERR comm_mgr_test_app_process_comm_msg(COMM_MGR_MSG *comm_
         
             if(anc_msg->hdr.anc_msg_type == COMM_MGR_ANC_MSG_INTERFACE) {
                 printf("Received an Interfacing Ancillary message, num_fd = %d\n", anc_msg->hdr.num_fd);
-                int fd = 0;
-                char fileBuf[100];
-                memset(fileBuf, 0, sizeof(fileBuf));
-                if(anc_msg->hdr.num_fd > 0) {
-                    fd = anc_msg->fds[0];
-                    FILE *f = fdopen(fd, "w+");
-                    fseek( f, 0, SEEK_SET );
-                    fread(fileBuf, sizeof(fileBuf), 1, f);
-                    printf("Content of the file = %s\n", fileBuf);
-                    fclose(f);
-                }
                 uint16_t req_uid = comm_msg->hdr.src_uid;
                 uint16_t res_uid = comm_msg->hdr.dst_uid;
                 char *buf = anc_msg->payloads[0];
                 uint16_t bufsize = anc_msg->nPayloadSize[0];
-
-                if(interface_lib_process_query(req_uid, res_uid, buf, bufsize) != INTERFACE_LIB_SUCCESS) {
+                
+                if(interface_lib_process_query(req_uid, res_uid, buf, bufsize, (void *)&comm_msg) != INTERFACE_LIB_SUCCESS) {
                     printf("Failed to process the interfacing message\n");
                 }
             }
@@ -369,7 +359,7 @@ COMM_MGR_LIB_TEST_APP_ERR comm_mgr_test_app_process_comm_msg(COMM_MGR_MSG *comm_
     fit in the buffer passed by the interface library, then return INTERFACE_LIB_APP_RESPONSE_PENDING after 
     filling in partial response
 */
-INTERFACE_LIB_ERR comm_mgr_lib_test_app_intf_text_cb(INTERFACE_LIB_QUERY_REQ_TYPE req_type, const char *query, 
+INTERFACE_LIB_ERR comm_mgr_lib_test_app_intf_req_text_cb(INTERFACE_LIB_QUERY_REQ_TYPE req_type, const char *query, 
                                                      char *buf, uint16_t bufsize) {
     
     if (query == NULL) {
@@ -391,6 +381,70 @@ INTERFACE_LIB_ERR comm_mgr_lib_test_app_intf_text_cb(INTERFACE_LIB_QUERY_REQ_TYP
     }
 
     return INTERFACE_LIB_SUCCESS;
+}
+
+/*
+    Callback function for writing the final responses from the interface library to the requested response location
+
+    The response location could be as simple as a file, or via direct Anicllary messages or even can be Communication 
+    Managers overlay messaging mechanisms like SCOM etc
+
+	The 'flags' field will have various bits like responsePending, if the response we are writing is a header(meta), or the
+	actual contents etc.
+    The interface library will also indicate if the response is done or yet pending. Depending on this, the application
+    can take various custom actions like sending/writing partial responses received so far OR waiting for all the responses
+    to be received etc.
+*/
+INTERFACE_LIB_ERR comm_mgr_lib_test_app_intf_response_cb(INTERFACE_LIB_QUERY_RES_TYPE res_type, const char *response, 
+                                                        void *arg, uint16_t flags) {
+
+	COMM_MGR_MSG *comm_msg = (COMM_MGR_MSG *)arg;
+	COMM_MGR_ANC_MSG *anc_msg = COMM_MGR_GET_ANC_MSG(comm_msg);
+	int fd = 0;
+
+    switch(res_type) {
+        case INTERFACE_LIB_QUERY_RES_FD:
+			fd = anc_msg->fds[0];
+            return comm_mgr_lib_test_app_intf_response_fd_type(fd, response, flags);       
+            break;
+    }
+
+}
+
+INTERFACE_LIB_ERR comm_mgr_lib_test_app_intf_response_fd_type(int fd, const char *response, uint16_t flags) {
+   
+	if(INTERFACE_LIB_IS_FLAG_SET(flags, INTERFACE_LIB_RES_IS_HEADER)) {
+		// Open the response fd location
+		FILE *fp = fdopen(fd, "w+"); // This will erase the contents of the file
+		if (fp == NULL) {
+			INTERFACE_LOG_ERROR("Unable to access the response location");
+			return INTERFACE_LIB_BAD_QUERY;
+		}
+
+		fclose(fp);
+	} else {
+		FILE *fp = fdopen(fd, "a"); // Now append the responses to the file
+		if (fp == NULL) {
+			INTERFACE_LOG_ERROR("Unable to access the response location");
+			return INTERFACE_LIB_BAD_QUERY;
+		}
+
+		fprintf(fp, "%s", response);
+		
+		if(INTERFACE_LIB_IS_FLAG_SET(flags, INTERFACE_LIB_RES_IS_PENDING)) {
+			fclose(fp);
+			return INTERFACE_LIB_SUCCESS;
+		}
+
+		time_t now;
+		time(&now);
+
+		fprintf(fp, "\n<TimeStamp>%s</TimeStamp>\n", ctime(&now));
+		fprintf(fp, "</Magic>\n");
+		fclose(fp);		
+	}
+
+	return INTERFACE_LIB_SUCCESS;
 }
 
 INTERFACE_LIB_ERR comm_mgr_lib_test_app_intf_process_token_query(uint16_t token, char *buf, uint16_t bufsize) {

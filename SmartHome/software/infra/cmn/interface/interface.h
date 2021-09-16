@@ -14,6 +14,14 @@
 
 #define INTERFACE_LIB_RES_BUF_SIZE      (8096) // 8KB
 
+// Flags
+#define INTERFACE_LIB_RES_IS_PENDING    (1 << 0)
+#define INTERFACE_LIB_RES_IS_HEADER     (1 << 1)
+
+#define INTERFACE_LIB_SET_FLAG(x,f)         (x  |= f)
+#define INTERFACE_LIB_CLEAR_FLAG(x,f)       (x  &= ~f)
+#define INTERFACE_LIB_IS_FLAG_SET(x, f)     (x & f)
+
 typedef enum {
     INTERFACE_LIB_SUCCESS = 0,
     INTERFACE_LIB_FAILURE,
@@ -23,19 +31,6 @@ typedef enum {
     INTERFACE_LIB_UNSUPPORTED_QUERY_TYPE,
     INTERFACE_LIB_APP_RESPONSE_PENDING,
 } INTERFACE_LIB_ERR;
-
-typedef enum {
-    INTERFACE_LIB_QUERY_TYPE_TEXT = 0, // used for cli type apps
-    INTERFACE_LIB_QUERY_TYPE_JSON,
-    INTERFACE_LIB_QUERY_TYPE_SCRIPT,
-} INTERFACE_LIB_QUERY_TYPE;
-
-/* Various supported query request types */
-typedef enum {
-    INTERFACE_LIB_QUERY_REQ_TYPE_TOKEN = 0, // easy and faster
-    INTERFACE_LIB_QUERY_REQ_TYPE_SPLIT_QUERY, // Full query is split into many words
-    INTERFACE_LIB_QUERY_REQ_TYPE_FULL_QUERY
-} INTERFACE_LIB_QUERY_REQ_TYPE;
 
 typedef enum {
     INTERFACE_LIB_SECURE_LEVEL_CRITICAL = 0,
@@ -61,7 +56,7 @@ typedef struct {
     char identifier[INTERFACE_LIB_IDENTIFIER_SIZE]; // 2 byte
     uint8_t query_type; // 1 byte (INTERFACE_LIB_QUERY_TYPE)
     uint8_t query_req; // Query request format (INTERFACE_LIB_QUERY_REQ_TYPE)
-    uint16_t response_loc; // 2 byte
+    uint8_t response_type; // 1 byte
     char *query; // It can any type
 } INTERFACE_QUERY;
 
@@ -79,12 +74,14 @@ static const char* interface_query_req_type_str[] = {
 };
 
 
-typedef INTERFACE_LIB_ERR (*interface_cb)(INTERFACE_LIB_QUERY_REQ_TYPE, const char *, char *, uint16_t);
+typedef INTERFACE_LIB_ERR (*interface_req_cb)(INTERFACE_LIB_QUERY_REQ_TYPE, const char *, char *, uint16_t);
+typedef INTERFACE_LIB_ERR (*interface_res_cb)(INTERFACE_LIB_QUERY_RES_TYPE, const char *, void *, uint16_t);
 
 typedef struct {
-    interface_cb text_cb;
-    interface_cb json_cb;
-    interface_cb script_cb;
+    interface_req_cb text_cb;   // request callback 
+    interface_req_cb json_cb;   // request callback 
+    interface_req_cb script_cb; // request callback
+    interface_res_cb response_cb;   // response callback
 } INTERFACE_APP_CB;
 
 
@@ -92,18 +89,14 @@ typedef struct {
 /*                          Public Functions                                  */
 /******************************************************************************/
 INTERFACE_LIB_ERR interface_lib_init(INTERFACE_LIB_SECURE_LEVEL level, INTERFACE_APP_CB *app_cb);
-INTERFACE_LIB_ERR interface_lib_process_query(uint16_t req_uid, uint16_t res_uid, char *buf, uint16_t bufsize);
+INTERFACE_LIB_ERR interface_lib_process_query(uint16_t req_uid, uint16_t res_uid, char *buf, uint16_t bufsize, void *arg);
 INTERFACE_LIB_ERR interface_lib_change_state(INTERFACE_LIB_STATE state);
 
 /******************************************************************************/
 /*                          Private Functions                                  */
 /******************************************************************************/
-static INTERFACE_LIB_ERR interface_lib_process_text_query(uint16_t req_uid, uint16_t res_uid, INTERFACE_QUERY *query);
-static INTERFACE_LIB_ERR interface_lib_create_response(uint16_t fd, uint16_t req_uid, uint16_t res_uid,
-                                                       const char *query_type, const char *query_req_type,
-                                                       const char *query);
-static INTERFACE_LIB_ERR interface_lib_write_response(uint16_t fd, const char *buf, boolean isResPending);
-                                                       
+static INTERFACE_LIB_ERR interface_lib_process_text_query(uint16_t req_uid, uint16_t res_uid, INTERFACE_QUERY *query, void *arg);
+static INTERFACE_LIB_ERR interface_lib_create_response(INTERFACE_QUERY *query, uint16_t req_uid, uint16_t res_uid, void *arg); 
 
 
 #endif /* INCLUDE_INTERFACE_LIB_H__ */

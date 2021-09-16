@@ -16,6 +16,20 @@ just specifies how a request for an app should be received. Depending on the req
 it can use various interfacing mechansims to expose certain functionalities / data
 about the app to the user/other apps
 
+The library has mainly two kinds of response system. If the response type is belonging to
+FD type family, then majority of the response will be handled by the library itself. The apps
+just needs to simply write/read the application specific response/request to the interface.
+
+If the response type is Non-FD type, then the aplication itself has to take care of sending the
+response back to the requesting application via whichever means the requesting and responding apps
+have agreed upon.
+
+It is recommended to use the FD-type family for most of the requests like show commands.
+
+>>> TODO: Come up with a design where the apps can create interfaces, sub-interfaces etc and
+        simply write/read from these interfaces/sub-interfaces. The apps shouldn't bother about
+        writing to FDs. These interfaces can be like a direct line between an APP and an requesting app.
+
 Supported interfacing mechasims by this library
  - TEXT (Command line interface)
  - JSON (For web apps/UI)

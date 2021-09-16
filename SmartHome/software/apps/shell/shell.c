@@ -8,7 +8,7 @@
 #include "interface_cmn.h"
 
 extern inline uint16_t interface_lib_get_query(uint16_t id, uint8_t type, uint8_t req_type,
-                                              uint16_t res_loc, void *query, uint8_t query_len, char *buf);
+                                              uint8_t res_type, void *query, uint8_t query_len, char *buf);
 
 static SHELL_APP *shell_app;
 boolean shell_app_communication_on = FALSE;
@@ -367,12 +367,22 @@ SHELL_APP_ERR shell_app_send_user_cmd(uint8_t slot, uint16_t dst_uid, SHELL_APP_
 		bufsize = strlen(shell_app->args[slot][0]) +  sizeof(uint16_t);
 	}
 #endif
+    FILE *fp = fdopen(fd, "a");
+    char str[] = "This is tutorialspoint.com";
+    fwrite(str , 1 , sizeof(str) , fp );
+    fflush(fp);
+
+    FILE *fp2 = fdopen(fd, "a");
+    char str1[] = "This is tutorialspoint.com 1";
+    fwrite(str1 , 1 , sizeof(str1) , fp2 );
+    fflush(fp2);
+
 
     if(shell_app->query_req_type == 0) { 
         shell_app_get_token_from_query(shell_app->args[slot][1], full_query, &token);
-        bufsize = interface_lib_get_query(INTERFACE_LIB_IDENTIFIER, 0, 0, fd, &token, 2, buf);
+        bufsize = interface_lib_get_query(INTERFACE_LIB_IDENTIFIER, 0, 0, INTERFACE_LIB_QUERY_RES_FD, &token, 2, buf);
     } else { // Full-query
-        bufsize = interface_lib_get_query(INTERFACE_LIB_IDENTIFIER, 0, 2, fd, 
+        bufsize = interface_lib_get_query(INTERFACE_LIB_IDENTIFIER, 0, 2, INTERFACE_LIB_QUERY_RES_FD, 
                                     shell_app->args[slot][0], strlen(shell_app->args[slot][0]), buf);
     }        
 
