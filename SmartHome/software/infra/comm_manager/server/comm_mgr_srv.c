@@ -665,7 +665,8 @@ int main() {
     COMM_MGR_SRV_TRACE("Starting the %s...", COMM_MGR_SRV_APP_NAME);
     COMM_MGR_SRV_ERR ret = COMM_MGR_SRV_SUCCESS;
 
-    log_lib_init(NULL, LOG_LVL_DEBUG); // Initialize logger
+    COMMUNICATION_MANAGER_CREATE_LOGS_FOLDER;
+    log_lib_init(COMMUNICATION_MANAGER_LOGS_FILEPATH(communication_manager.log), LOG_LVL_DEBUG); // Initialize logger
     utils_ds_init(); // Initialize utils data structure library
 
 	if(comm_mgr_srv_init() != COMM_MGR_SRV_SUCCESS) {

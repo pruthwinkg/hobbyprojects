@@ -9,8 +9,8 @@
 #include "comm_mgr_cmn_enums.h"
 
 // Various socket types supported
-#define SOCKET_FILE_PATH  		"/tmp/smarthome_server.socket"
-#define ANC_SOCKET_FILE_PATH  	"/tmp/smarthome_server.anc_socket"
+#define SOCKET_FILE_PATH  		COMMUNICATION_MANAGER_FILEPATH(smarthome_server.socket)
+#define ANC_SOCKET_FILE_PATH  	COMMUNICATION_MANAGER_FILEPATH(smarthome_server.anc_socket)
 
 #define COMM_MGR_PACKET_MAX_SIZE    (64 * 1024 * 1024) // 64 Kbytes
 #define COMM_MGR_HDR_SIZE           (128)  // bytes

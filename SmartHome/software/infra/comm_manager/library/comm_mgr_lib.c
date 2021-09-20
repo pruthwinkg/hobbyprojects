@@ -43,8 +43,8 @@ boolean comm_mgr_lib_initialized = FALSE;
 static COMM_MGR_LIB_STATUS __comm_mgr_lib_status[COMM_MGR_LIB_MAX_CLIENTS];
 COMM_MGR_LIB_APP_PROPERTY __comm_mgr_lib_app_property;
 
-COMM_MGR_LIB_ERR comm_mgr_lib_init(LOG_LEVEL level, uint16_t src_uid, boolean epoll_en) {
-    log_lib_init(NULL, level);
+COMM_MGR_LIB_ERR comm_mgr_lib_init(const char *logfile, LOG_LEVEL level, uint16_t src_uid, boolean epoll_en) {
+    log_lib_init(logfile, level);
     utils_ds_init(); // Initialize utils data structure library
 
     for (uint16_t i = 0; i < COMM_MGR_LIB_MAX_CLIENTS; i++) {

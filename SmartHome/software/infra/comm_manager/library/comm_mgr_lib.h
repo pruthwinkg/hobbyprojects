@@ -149,7 +149,7 @@ typedef struct {
 /******************************************************************************/
 /*          Public Functions                                                  */
 /******************************************************************************/
-COMM_MGR_LIB_ERR comm_mgr_lib_init(LOG_LEVEL level, uint16_t src_uid, boolean epoll_en);
+COMM_MGR_LIB_ERR comm_mgr_lib_init(const char *logfile, LOG_LEVEL level, uint16_t src_uid, boolean epoll_en);
 COMM_MGR_LIB_ERR comm_mgr_lib_destroy(void);
 COMM_MGR_LIB_CLIENT_ID comm_mgr_lib_create_client(COMM_MGR_LIB_CLIENT *client);
 COMM_MGR_LIB_ERR comm_mgr_lib_delete_client(COMM_MGR_LIB_CLIENT_ID id);

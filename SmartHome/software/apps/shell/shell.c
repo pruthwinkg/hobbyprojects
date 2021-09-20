@@ -485,8 +485,9 @@ void shell_app_close() {
 int main() {
 	COMM_MGR_LIB_CLIENT client;
 
+    SHELL_APP_CREATE_DEFAULT_LOC;
     // Initialize logger & comm_mgr_lib
-	comm_mgr_lib_init(LOG_LVL_ERROR, SHELL_APP_SRC_UID, FALSE);
+	comm_mgr_lib_init(NULL, LOG_LVL_ERROR, SHELL_APP_SRC_UID, FALSE);
 
     SHELL_APP_DEBUG("Intializing shell program");
 

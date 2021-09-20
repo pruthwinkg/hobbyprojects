@@ -71,6 +71,22 @@ SYS_MGR_CLIENT_TBL system_mgr_client_tbl[] = {
     },
 
     {
+        .clientID = SYS_MGR_CLIENT_INTERFACE_MANAGER,
+        .clientName = "interface_manager",
+        .isStaticUID = TRUE,
+        .UID = SMARTHOME_SUBSYSTEM_INTERFACE_MANAGER,
+        .clientProperty = 
+            {
+                .bootMode = SYS_MGR_CLIENT_BOOT_ALWAYS,
+                .bootTryValue = -1,
+                .priority = SYS_MGR_CLIENT_PRIO_CRITICAL,
+                .heapLimit = SYS_MGR_CLIENT_HEAP_2GB,
+                .userHeapLimit = -1,
+            }           
+    },
+
+
+    {
         .clientID = SYS_MGR_CLIENT_MAX_CLIENTS, // This should be the last client
     },
 

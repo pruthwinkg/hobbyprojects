@@ -27,6 +27,7 @@ static SYS_MGR_ERR sysmgr_update_shm_obj_hdr_validclients(int validclients);
 
 SYS_MGR_ERR sysmgr_init_clients() {
     SYS_MGR_ERR ret = SYS_MGR_SUCCESS;
+    struct stat st = {0};
 
     SYS_MGR_TRACE("Initializing the %s", SYS_MGR_APP_NAME);
 
@@ -37,7 +38,12 @@ SYS_MGR_ERR sysmgr_init_clients() {
     }
 
     sleep(1);
-   
+
+    SMARTHOME_CREATE_PROJECT_DEFAULT_FOLDER();
+    SMARTHOME_CREATE_MODULE_DEFAULT_FOLDER(apps);
+    SMARTHOME_CREATE_MODULE_DEFAULT_FOLDER(communication_manager);
+    SMARTHOME_CREATE_MODULE_DEFAULT_FOLDER(interface_manager);
+
     uint16_t i = 0;
     while(system_mgr_client_tbl[i].clientID != SYS_MGR_CLIENT_MAX_CLIENTS) {
         // Initialize the client       

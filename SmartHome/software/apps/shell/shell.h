@@ -30,7 +30,7 @@
 #define SHELL_APP_MAX_CMD_SIZE      (SHELL_APP_MAX_CMD_TOK * SHELL_APP_MAX_CMD_TOK_SIZE) // Tells what is maximum length of each user cmd
 #define SHELL_APP_TOK_DELIM         " \t\r\n\a" // Various valid delimiters in a user cmd
 
-#define SHELL_APP_OUT_FILE_LOC      "/tmp"
+#define SHELL_APP_OUT_FILE_LOC      SHELL_APP_GET_DEFAULT_LOC
 #define SHELL_APP_MAX_SEND_BUF_SIZE     (INTERFACE_QUERY_HEADER_SIZE+INTERFACE_LIB_MAX_QUERY_SIZE)
 
 extern UTILS_TASK_HANDLER shell_app_workers[SHELL_APP_TASK_ID_MAX];

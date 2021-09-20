@@ -13,7 +13,7 @@
 
 #include "smarthome_essentials.h"
 
-#define LOG_MAX_FILENAME_LEN    (80)
+#define LOG_MAX_FILENAME_LEN    (512)
 #define LOG_INTERNAL_BUF_SIZE   (240)
 
 typedef enum {

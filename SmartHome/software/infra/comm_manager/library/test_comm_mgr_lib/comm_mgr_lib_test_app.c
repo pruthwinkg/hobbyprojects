@@ -49,7 +49,7 @@ int main() {
     int len = 0;
     
 
-    comm_mgr_lib_init(LOG_LVL_DEBUG, TEST_COMM_MGR_LIB_SRC_UID, FALSE);
+    comm_mgr_lib_init(NULL, LOG_LVL_DEBUG, TEST_COMM_MGR_LIB_SRC_UID, FALSE);
 
     memset(&intf_lib_app_cb, 0, sizeof(INTERFACE_APP_CB));
     intf_lib_app_cb.text_cb = comm_mgr_lib_test_app_intf_req_text_cb;

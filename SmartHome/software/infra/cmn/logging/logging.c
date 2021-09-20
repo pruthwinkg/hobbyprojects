@@ -2,7 +2,6 @@
     Description : Logging library
 
 *******************************************************************************/
-
 #include "logging.h"
 
 LOG_PROPERTIES log_property;
@@ -15,8 +14,9 @@ const char *log_level_str[] = {
 };
 
 void log_lib_init(const char *filename, LOG_LEVEL level) {
+    struct stat st = {0};
     memset(&log_property, 0, sizeof(LOG_PROPERTIES));
-    log_property.level = level;
+    log_property.level = level;    
 
     if(filename != NULL) {
         strcpy(log_property.fileName, filename);

@@ -21,6 +21,7 @@
 
 #define SYS_MGR_APP_NAME        "System Manager"
 
+
 typedef struct {
     SYS_MGR_CLIENT_BOOT_MODE bootMode;    
     uint8_t bootTryValue; // Applicable for SYS_MGR_CLIENT_BOOT_TRY
