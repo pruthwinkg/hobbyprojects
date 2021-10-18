@@ -12,6 +12,7 @@ include_directories("${CMAKE_CURRENT_SOURCE_DIR}/infra/comm_manager")
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/infra/cmn/logging")
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/infra/cmn/utils")
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/infra/cmn/interface")
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/infra/cmn/mapi")
 
 
 if(EnableTestCode)

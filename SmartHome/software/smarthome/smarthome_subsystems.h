@@ -66,6 +66,8 @@ BEGIN_ENUM(SMARTHOME_SUBSYSTEM) {
 #define INTERFACE_MANAGER_CREATE_LOGS_FOLDER		SMARTHOME_CREATE_MODULE_DEFAULT_FOLDER(interface_manager/logs)  
 #define INTERFACE_MANAGER_LOGS_FILEPATH(filename)   SMARTHOME_GET_MODULE_DEFAULT_LOC(interface_manager/logs) #filename
 
+#define MAPI_LIB_GET_DEFAULT_LOC        SMARTHOME_GET_MODULE_DEFAULT_LOC(mapi)
+#define MAPI_LIB_FILEPATH(filename)     SMARTHOME_GET_MODULE_DEFAULT_LOC(mapi) #filename
 
 /******************************************************************************************************************************/
 /*                                           Defines for all user apps subsystems                                             */

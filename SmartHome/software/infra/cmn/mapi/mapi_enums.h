@@ -1,0 +1,30 @@
+/*******************************************************************************
+    Description : MAPI library header file for enums
+*******************************************************************************/
+
+#include "smarthome_essentials.h"
+
+#define MAPI_LIB_ERR_BASE   (SMARTHOME_ERROR_CODE_MAPI_LIB)
+
+
+BEGIN_ENUM(MAPI_LIB_ERR) {
+    ADD_ENUM_VAL(MAPI_LIB_SUCCESS, 0)
+    ADD_ENUM_VAL(MAPI_LIB_INIT_FAILURE, MAPI_LIB_ERR_BASE)
+    ADD_ENUM(MAPI_LIB_INVALID_ARG)
+    ADD_ENUM(MAPI_LIB_SELECT_ERR)
+    ADD_ENUM(MAPI_LIB_SOCKET_ACCEPT_ERR)
+    ADD_ENUM(MAPI_LIB_STREAM_START_ERR)
+    ADD_ENUM(MAPI_LIB_STREAM_STOP_ERR)
+    ADD_ENUM(MAPI_LIB_STREAM_STORE_TYPE_ERR)
+    ADD_ENUM(MAPI_LIB_RECV_ERR)
+    ADD_ENUM(MAPI_LIB_SEND_ERR)    
+    ADD_ENUM(MAPI_LIB_SERVER_TIMEOUT)
+    ADD_ENUM(MAPI_LIB_PEER_DOWN)
+    ADD_ENUM(MAPI_LIB_BAD_MSG)
+}END_ENUM(MAPI_LIB_ERR);
+
+BEGIN_ENUM(MAPI_LIB_SOCK_TYPE) {
+    ADD_ENUM(MAPI_LIB_SOCK_TYPE_SOCK_DGRAM)    
+    ADD_ENUM(MAPI_LIB_SOCK_TYPE_SOCK_STREAM)    
+}END_ENUM(MAPI_LIB_SOCK_TYPE); 
+
