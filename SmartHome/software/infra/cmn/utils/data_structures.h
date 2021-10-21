@@ -16,6 +16,7 @@
 
 #include "data_structures_list.h"
 #include "data_structures_queue.h"
+#include "data_structures_hash.h"
 
 
 #define UTILS_DS_MAX_ID             (100) // Max IDs support (soft limit)
@@ -46,5 +47,15 @@ int utils_ds_list_insert_at_pos(UTILS_DS_ID id, void *data, uint32_t pos);
 void* utils_ds_list_remove(UTILS_DS_ID id, boolean from_head);
 void* utils_ds_list_remove_at_pos(UTILS_DS_ID id, uint32_t pos);
 int utils_ds_list_destroy(UTILS_DS_ID id, boolean delete_data);
+
+// Hash
+UTILS_DS_ID utils_ds_hash_create(UTILS_HASH *hash);
+int utils_ds_hash_insert(UTILS_DS_ID id, void *key, uint16_t key_len, void *data);
+void* utils_ds_hash_lookup(UTILS_DS_ID id, void *key, uint16_t key_len);
+int utils_ds_hash_erase(UTILS_DS_ID id, void *key, uint16_t key_len);
+int utils_ds_hash_reset(UTILS_DS_ID id);
+int utils_ds_hash_destroy(UTILS_DS_ID id);
+int utils_ds_hash_get_size(UTILS_DS_ID id);
+boolean utils_ds_hash_is_empty(UTILS_DS_ID id);
 
 #endif /* INCLUDE_UTILS_DATASTRUCTURES_H__ */

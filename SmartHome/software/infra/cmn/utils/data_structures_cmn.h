@@ -20,11 +20,13 @@
 
 #include "smarthome_essentials.h"
 #include "logging.h"
+#include "utils_enums.h"
 
 #define UTILS_LOG_ERROR  LOG_ERROR
 #define UTILS_LOG_TRACE  LOG_TRACE
 #define UTILS_LOG_DEBUG  LOG_DEBUG
 #define UTILS_NOT_YET_IMPLEMENTED   printf("Not yet implemented\n")
+#define UTILS_NOT_SUPPORTED printf("Not supported\n")
 
 #define UTILS_DS_MAX_ID             (100) // Max IDs support (soft limit)
 
@@ -76,6 +78,7 @@ typedef enum {
 /*                  Internal Data structures                                   */
 /*******************************************************************************/
 extern boolean utils_ds_initialized;
+extern UTILS_DS_LIB_MODE utils_ds_lib_mode;
 
 typedef struct {
     boolean isProtected;

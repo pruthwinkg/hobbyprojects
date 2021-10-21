@@ -13,6 +13,8 @@ UTILS_DS_ID utils_ds_bitmap[UTILS_DS_MAX_ID];
 void *utils_ds_metadata[UTILS_DS_MAX_ID];
 
 boolean utils_ds_initialized = FALSE;
+UTILS_DS_LIB_MODE utils_ds_lib_mode = UTILS_DS_LIB_MODE_CPP; // Default mode
+
 
 /****************************************************************************/
 /*                      Internal functions declaration                      */
@@ -20,7 +22,7 @@ boolean utils_ds_initialized = FALSE;
 static UTILS_DS_ID __utils_get_free_id(UTILS_DS_TYPE type, int subtype);
 static void __utils_delete_id(UTILS_DS_ID id);
 
-void utils_ds_init() {
+void utils_ds_init(UTILS_DS_LIB_MODE mode) {
     if(utils_ds_initialized == TRUE) {
         UTILS_LOG_TRACE("utils_ds library is already initialized\n");
         return;
@@ -33,6 +35,9 @@ void utils_ds_init() {
     // Even this array will be generic (void *). Its upto the DS
     // to typecast and malloc properly
     memset(utils_ds_metadata, 0, sizeof(utils_ds_metadata));
+
+    utils_ds_lib_mode = mode;
+    UTILS_LOG_TRACE("Setting the utils ds library mode to %d", mode);
 
     utils_ds_initialized = TRUE;    
 }

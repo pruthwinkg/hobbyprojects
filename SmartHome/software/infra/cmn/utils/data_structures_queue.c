@@ -6,6 +6,7 @@
                 agnostic of what kind of data they hold
 *****************************************************************************/
 
+#include "./utils_cpp/utils_cpp.h"
 #include "data_structures_queue.h"
 
 /****************************************************************************/
@@ -16,6 +17,11 @@ static int __utils_ds_queue_enqueue_static(UTILS_DS_ID id, void *data);
 static void* __utils_ds_queue_dequeue_static(UTILS_DS_ID id);
 static void* __utils_ds_queue_lookup_at_pos_static(UTILS_DS_ID id, uint32_t pos);
 static void __utils_ds_queue_destroy_static(UTILS_DS_ID id, boolean delete_data);
+static int __utils_ds_queue_create_dynamic(UTILS_DS_ID id, UTILS_QUEUE *queue);
+static int __utils_ds_queue_enqueue_dynamic(UTILS_DS_ID id, void *data);
+static void* __utils_ds_queue_dequeue_dynamic(UTILS_DS_ID id);
+static void* __utils_ds_queue_lookup_at_pos_dynamic(UTILS_DS_ID id, uint32_t pos);
+static void __utils_ds_queue_destroy_dynamic(UTILS_DS_ID id, boolean delete_data);
 static int __utils_ds_queue_create_circular(UTILS_DS_ID id, UTILS_QUEUE *queue);
 static int __utils_ds_queue_enqueue_circular(UTILS_DS_ID id, void *data);
 static void* __utils_ds_queue_dequeue_circular(UTILS_DS_ID id);
@@ -39,8 +45,9 @@ UTILS_DS_ID utils_ds_queue_create(UTILS_QUEUE *queue) {
             }
             break;
         case UTILS_QUEUE_DYNAMIC:
-            UTILS_NOT_YET_IMPLEMENTED;
-            return 0;
+            if(__utils_ds_queue_create_dynamic(id, queue) < 0) {
+                goto err;
+            }
             break;
         case UTILS_QUEUE_CIRCULAR:
             if(__utils_ds_queue_create_circular(id, queue) < 0) {
@@ -71,8 +78,9 @@ int utils_ds_queue_enqueue(UTILS_DS_ID id, void *data) {
             }           
             break;
          case UTILS_QUEUE_DYNAMIC:
-            UTILS_NOT_YET_IMPLEMENTED;
-            return -1;
+            if(__utils_ds_queue_enqueue_dynamic(id, data) < 0) {
+                return -1;
+            }       
             break;          
         case UTILS_QUEUE_CIRCULAR:
             if(__utils_ds_queue_enqueue_circular(id, data) < 0) {
@@ -97,8 +105,7 @@ void* utils_ds_queue_dequeue(UTILS_DS_ID id) {
         case UTILS_QUEUE_STATIC:
             return __utils_ds_queue_dequeue_static(id);
         case UTILS_QUEUE_DYNAMIC:
-            UTILS_NOT_YET_IMPLEMENTED;
-            return NULL;       
+            return __utils_ds_queue_dequeue_dynamic(id);
         case UTILS_QUEUE_CIRCULAR:
             return __utils_ds_queue_dequeue_circular(id);
         default:
@@ -118,8 +125,7 @@ void* utils_ds_queue_lookup_at_pos(UTILS_DS_ID id, uint32_t pos) {
         case UTILS_QUEUE_STATIC:
             return __utils_ds_queue_lookup_at_pos_static(id, pos);
         case UTILS_QUEUE_DYNAMIC:
-            UTILS_NOT_YET_IMPLEMENTED;
-            return NULL;       
+            return __utils_ds_queue_lookup_at_pos_dynamic(id, pos);
         case UTILS_QUEUE_CIRCULAR: // Doesnt support this currently
             return NULL;
         default:
@@ -149,8 +155,8 @@ int utils_ds_queue_destroy(UTILS_DS_ID id, boolean delete_data) {
             goto del_id;            
             break;
         case UTILS_QUEUE_DYNAMIC:
-            UTILS_NOT_YET_IMPLEMENTED;
-            return 0;
+            __utils_ds_queue_destroy_dynamic(id, delete_data);
+            goto del_id;            
             break;
         case UTILS_QUEUE_CIRCULAR:
             __utils_ds_queue_destroy_circular(id, delete_data);
@@ -198,8 +204,14 @@ static int __utils_ds_queue_create_static(UTILS_DS_ID id, UTILS_QUEUE *queue) {
         UTILS_DS_LOCK_CREATE(qmeta);
     }
 
-    // Create an array of void poiners for data storage
-    qmeta->data = malloc(sizeof(void *) * queue->size);
+    if(utils_ds_lib_mode == UTILS_DS_LIB_MODE_CPP) {
+        qmeta->__container =  utils_ds_cpp_queue_create_container(0);
+        qmeta->data = NULL;
+    } else if (utils_ds_lib_mode == UTILS_DS_LIB_MODE_STD) {
+        // Create an array of void poiners for data storage
+        qmeta->data = malloc(sizeof(void *) * queue->size);
+        qmeta->__container = NULL;
+    }
 
     // Save the meta pointer to global array
     utils_ds_set_meta(id, (void *)qmeta);
@@ -215,7 +227,12 @@ static int __utils_ds_queue_enqueue_static(UTILS_DS_ID id, void *data) {
     if(__utils_ds_queue_isfull(id)) return -1;
 
     // Data will enqueued at 'rear' pointer
-    qmeta->data[qmeta->rear] = data;
+    if(utils_ds_lib_mode == UTILS_DS_LIB_MODE_CPP) {
+        utils_ds_cpp_queue_enqueue_container(qmeta->__container, data, FALSE);
+    } else if (utils_ds_lib_mode == UTILS_DS_LIB_MODE_STD) {
+        qmeta->data[qmeta->rear] = data;
+    }
+
     qmeta->rear += 1;
     qmeta->currsize += 1;
 
@@ -229,13 +246,25 @@ static void* __utils_ds_queue_dequeue_static(UTILS_DS_ID id) {
 
     UTILS_DS_CHECK_LOCK(qmeta);
 
-    if(__utils_ds_queue_isempty(id)) return NULL;
+    // Once the queue is empty, reset the queue for re-use
+    if(qmeta->front == qmeta->capacity) {
+        qmeta->currsize = 0;
+        qmeta->front = 0;
+        qmeta->rear = 0;
+        return NULL;
+    }
 
-    // Note : cursize is NOT incremented intentionally in this type of queue.
+    // Note : cursize is NOT decremented intentionally in this type of queue.
     if (qmeta->front >= qmeta->rear) return NULL;
 
-    // Data will dequeued at 'front' pointer
-    void *data = qmeta->data[qmeta->front];
+    void *data = NULL;
+    // Dequeue always from front
+    if(utils_ds_lib_mode == UTILS_DS_LIB_MODE_CPP) {
+        data = utils_ds_cpp_queue_dequeue_container(qmeta->__container, TRUE);
+    } else if (utils_ds_lib_mode == UTILS_DS_LIB_MODE_STD) {
+        data = qmeta->data[qmeta->front];
+    }
+
     qmeta->front += 1;
 
     UTILS_DS_CHECK_UNLOCK(qmeta);
@@ -251,7 +280,13 @@ static void* __utils_ds_queue_lookup_at_pos_static(UTILS_DS_ID id, uint32_t pos)
     if(__utils_ds_queue_isempty(id)) return NULL;
     if(pos >= qmeta->capacity) return NULL;
 
-    void *data = qmeta->data[pos];
+    void *data = NULL;
+
+    if(utils_ds_lib_mode == UTILS_DS_LIB_MODE_CPP) {
+        data = utils_ds_cpp_queue_lookup_at_pos_container(qmeta->__container, pos);
+    } else if (utils_ds_lib_mode == UTILS_DS_LIB_MODE_STD) {
+        data = qmeta->data[pos];
+    }
 
     UTILS_DS_CHECK_UNLOCK(qmeta);
 
@@ -261,20 +296,162 @@ static void* __utils_ds_queue_lookup_at_pos_static(UTILS_DS_ID id, uint32_t pos)
 static void __utils_ds_queue_destroy_static(UTILS_DS_ID id, boolean delete_data) {
     __UTILS_QUEUE_META *qmeta = (__UTILS_QUEUE_META*)utils_ds_get_meta(id);
 
+    UTILS_DS_LOCK_DESTROY(qmeta);
+
     // First try to delete the data in this queue
     if (delete_data == TRUE) {
-        for (uint32_t i = 0; i < qmeta->capacity; i++) {
-            if(qmeta->data[i] != NULL) {
-                free(qmeta->data[i]);
+        if(utils_ds_lib_mode == UTILS_DS_LIB_MODE_CPP) {
+            for (uint32_t i = qmeta->front; i < qmeta->rear; i++) { // Need to pass a valid pos for container
+                void *data = utils_ds_cpp_queue_lookup_at_pos_container(qmeta->__container, i);
+                if(data != NULL) {
+                    free(data);
+                }
+            }
+        } else if (utils_ds_lib_mode == UTILS_DS_LIB_MODE_STD) {
+            for (uint32_t i = 0; i < qmeta->capacity; i++) {
+                if(qmeta->data[i] != NULL) {
+                    free(qmeta->data[i]);
+                }
             }
         }
     }
 
-    UTILS_DS_LOCK_DESTROY(qmeta);
+    if(utils_ds_lib_mode == UTILS_DS_LIB_MODE_CPP) {
+        utils_ds_cpp_queue_destroy_container(qmeta->__container);
+    } else if (utils_ds_lib_mode == UTILS_DS_LIB_MODE_STD) {
+        free(qmeta->data);       
+    }
 
     // Start deleting meta for this id
     utils_ds_set_meta(id, NULL);
-    free(qmeta->data);
+    memset(qmeta, 0, sizeof(__UTILS_QUEUE_META));
+    free(qmeta);
+}
+/*****************************************************************************/
+static int __utils_ds_queue_create_dynamic(UTILS_DS_ID id, UTILS_QUEUE *queue) {
+    if (queue->isPriority) {
+        UTILS_NOT_YET_IMPLEMENTED;
+        return -1;
+    }
+    
+    __UTILS_QUEUE_META *qmeta = (__UTILS_QUEUE_META *)malloc(sizeof(__UTILS_QUEUE_META));
+    qmeta->front = 0;
+    qmeta->currsize = 0;
+    qmeta->rear = 0;
+    qmeta->capacity = UTILS_QUEUE_DYNAMIC_MAX_SIZE;
+    qmeta->lock.isProtected = FALSE;
+
+    if(queue->isProtected == TRUE) {
+        UTILS_DS_LOCK_CREATE(qmeta);
+    }
+
+    if((utils_ds_lib_mode == UTILS_DS_LIB_MODE_CPP) || (utils_ds_lib_mode == UTILS_DS_LIB_MODE_MIXED)) {
+        qmeta->__container =  utils_ds_cpp_queue_create_container(0);
+        qmeta->data = NULL;
+    } else if (utils_ds_lib_mode == UTILS_DS_LIB_MODE_STD) { // Not supported in this mode
+        UTILS_NOT_SUPPORTED;
+        return -1;
+    }
+
+    // Save the meta pointer to global array
+    utils_ds_set_meta(id, (void *)qmeta);
+
+    return 0;
+}
+
+static int __utils_ds_queue_enqueue_dynamic(UTILS_DS_ID id, void *data) {
+    __UTILS_QUEUE_META *qmeta = (__UTILS_QUEUE_META*)utils_ds_get_meta(id);
+
+    UTILS_DS_CHECK_LOCK(qmeta);
+
+    if(__utils_ds_queue_isfull(id)) return -1;
+
+    // Data will enqueued at 'rear' pointer
+    if((utils_ds_lib_mode == UTILS_DS_LIB_MODE_CPP) || (utils_ds_lib_mode == UTILS_DS_LIB_MODE_MIXED)) {
+        utils_ds_cpp_queue_enqueue_container(qmeta->__container, data, FALSE);
+    } else if (utils_ds_lib_mode == UTILS_DS_LIB_MODE_STD) {
+        UTILS_NOT_SUPPORTED;
+        return -1;
+    }
+
+    qmeta->currsize += 1;
+
+    UTILS_DS_CHECK_UNLOCK(qmeta);
+
+    return 0;
+}
+
+static void* __utils_ds_queue_dequeue_dynamic(UTILS_DS_ID id) {
+    __UTILS_QUEUE_META *qmeta = (__UTILS_QUEUE_META*)utils_ds_get_meta(id);
+
+    UTILS_DS_CHECK_LOCK(qmeta);
+
+    if(__utils_ds_queue_isempty(id)) return NULL;
+
+    void *data = NULL;
+    // Dequeue always from front
+    if((utils_ds_lib_mode == UTILS_DS_LIB_MODE_CPP) || (utils_ds_lib_mode == UTILS_DS_LIB_MODE_MIXED)) {
+        data = utils_ds_cpp_queue_dequeue_container(qmeta->__container, TRUE);
+    } else if (utils_ds_lib_mode == UTILS_DS_LIB_MODE_STD) {
+        UTILS_NOT_SUPPORTED;
+        return NULL;
+    }
+
+    qmeta->currsize -= 1;
+
+    UTILS_DS_CHECK_UNLOCK(qmeta);
+
+    return data;
+}
+
+static void* __utils_ds_queue_lookup_at_pos_dynamic(UTILS_DS_ID id, uint32_t pos) {
+    __UTILS_QUEUE_META *qmeta = (__UTILS_QUEUE_META*)utils_ds_get_meta(id);
+
+    UTILS_DS_CHECK_LOCK(qmeta);
+
+    if(__utils_ds_queue_isempty(id)) return NULL;
+    if(pos >= qmeta->capacity) return NULL;
+
+    void *data = NULL;
+
+    if((utils_ds_lib_mode == UTILS_DS_LIB_MODE_CPP) || (utils_ds_lib_mode == UTILS_DS_LIB_MODE_MIXED)) {
+        data = utils_ds_cpp_queue_lookup_at_pos_container(qmeta->__container, pos);
+    } else if (utils_ds_lib_mode == UTILS_DS_LIB_MODE_STD) {
+        UTILS_NOT_SUPPORTED;
+        return NULL;
+    }
+
+    UTILS_DS_CHECK_UNLOCK(qmeta);
+
+    return data;
+}
+
+static void __utils_ds_queue_destroy_dynamic(UTILS_DS_ID id, boolean delete_data) {
+    __UTILS_QUEUE_META *qmeta = (__UTILS_QUEUE_META*)utils_ds_get_meta(id);
+
+    UTILS_DS_LOCK_DESTROY(qmeta);
+
+    // First try to delete the data in this queue
+    if (delete_data == TRUE) {
+        if((utils_ds_lib_mode == UTILS_DS_LIB_MODE_CPP) || (utils_ds_lib_mode == UTILS_DS_LIB_MODE_MIXED)) {
+            for (uint32_t i = qmeta->front; i < qmeta->rear; i++) { // Need to pass a valid pos for container
+                void *data = utils_ds_cpp_queue_lookup_at_pos_container(qmeta->__container, i);
+                if(data != NULL) {
+                    free(data);
+                }
+            }
+        } else if (utils_ds_lib_mode == UTILS_DS_LIB_MODE_STD) {
+            UTILS_NOT_SUPPORTED;
+            return;
+        }
+    }
+
+    if((utils_ds_lib_mode == UTILS_DS_LIB_MODE_CPP) || (utils_ds_lib_mode == UTILS_DS_LIB_MODE_MIXED)) {
+        utils_ds_cpp_queue_destroy_container(qmeta->__container);
+    }
+
+    // Start deleting meta for this id
+    utils_ds_set_meta(id, NULL);
     memset(qmeta, 0, sizeof(__UTILS_QUEUE_META));
     free(qmeta);
 }
@@ -297,8 +474,14 @@ static int __utils_ds_queue_create_circular(UTILS_DS_ID id, UTILS_QUEUE *queue) 
         UTILS_DS_LOCK_CREATE(qmeta);
     }
 
-    // Create an array of void poiners for data storage
-    qmeta->data = malloc(sizeof(void *) * queue->size);
+    if(utils_ds_lib_mode == UTILS_DS_LIB_MODE_CPP) {
+        qmeta->__container = utils_ds_cpp_queue_create_container(queue->size);
+        qmeta->data = NULL;
+    } else if (utils_ds_lib_mode == UTILS_DS_LIB_MODE_STD) {
+        // Create an array of void poiners for data storage
+        qmeta->data = malloc(sizeof(void *) * queue->size);
+        qmeta->__container = NULL;
+    }
 
     // Save the meta pointer to global array
     utils_ds_set_meta(id, (void *)qmeta);
@@ -315,7 +498,13 @@ static int __utils_ds_queue_enqueue_circular(UTILS_DS_ID id, void *data) {
 
     // Data will enqueued at 'rear' pointer
     qmeta->rear = (qmeta->rear + 1)%qmeta->capacity;
-    qmeta->data[qmeta->rear] = data;
+
+    if(utils_ds_lib_mode == UTILS_DS_LIB_MODE_CPP) {
+        utils_ds_cpp_queue_insert_at_pos_container(qmeta->__container, qmeta->rear, data);
+    } else if (utils_ds_lib_mode == UTILS_DS_LIB_MODE_STD) {
+        qmeta->data[qmeta->rear] = data;    
+    }
+
     qmeta->currsize += 1;
 
     UTILS_DS_CHECK_UNLOCK(qmeta);    
@@ -330,8 +519,14 @@ static void* __utils_ds_queue_dequeue_circular(UTILS_DS_ID id) {
 
     if(__utils_ds_queue_isempty(id)) return NULL;
 
+    void *data = NULL;
     // Data will dequeued at 'front' pointer
-    void *data = qmeta->data[qmeta->front];    
+    if(utils_ds_lib_mode == UTILS_DS_LIB_MODE_CPP) {
+        data = utils_ds_cpp_queue_lookup_at_pos_container(qmeta->__container, qmeta->front);     
+    } else if (utils_ds_lib_mode == UTILS_DS_LIB_MODE_STD) {
+        data = qmeta->data[qmeta->front];
+    }
+
     qmeta->front = (qmeta->front + 1)%qmeta->capacity;
     qmeta->currsize -= 1;
 
@@ -343,20 +538,34 @@ static void* __utils_ds_queue_dequeue_circular(UTILS_DS_ID id) {
 static void __utils_ds_queue_destroy_circular(UTILS_DS_ID id, boolean delete_data) {
     __UTILS_QUEUE_META *qmeta = (__UTILS_QUEUE_META*)utils_ds_get_meta(id);
 
+    UTILS_DS_LOCK_DESTROY(qmeta);
+
     // First try to delete the data in this queue
     if (delete_data == TRUE) {
-        for (uint32_t i = 0; i < qmeta->capacity; i++) {
-            if(qmeta->data[i] != NULL) {
-                free(qmeta->data[i]);
+        if(utils_ds_lib_mode == UTILS_DS_LIB_MODE_CPP) {
+            for (uint32_t i = 0; i < qmeta->capacity; i++) {
+                void *data = utils_ds_cpp_queue_lookup_at_pos_container(qmeta->__container, i);
+                if(data != NULL) {
+                    free(data);
+                }
+            }
+        } else if (utils_ds_lib_mode == UTILS_DS_LIB_MODE_STD) {
+            for (uint32_t i = 0; i < qmeta->capacity; i++) {
+                if(qmeta->data[i] != NULL) {
+                    free(qmeta->data[i]);
+                }
             }
         }
     }
 
-    UTILS_DS_LOCK_DESTROY(qmeta);
+    if(utils_ds_lib_mode == UTILS_DS_LIB_MODE_CPP) {
+        utils_ds_cpp_queue_destroy_container(qmeta->__container);
+    } else if (utils_ds_lib_mode == UTILS_DS_LIB_MODE_STD) {
+        free(qmeta->data);       
+    }
 
     // Start deleting meta for this id
     utils_ds_set_meta(id, NULL);
-    free(qmeta->data);
     free(qmeta);
 }
 
