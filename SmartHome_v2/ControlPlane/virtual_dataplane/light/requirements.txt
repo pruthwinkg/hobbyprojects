@@ -1,0 +1,5 @@
+protobuf==4.24.4
+jsonschema
+flask
+requests
+websocket-client

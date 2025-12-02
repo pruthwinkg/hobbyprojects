@@ -1,0 +1,1 @@
+/usr/bin/cc -g -rdynamic CMakeFiles/interface_manager.dir/main.c.o CMakeFiles/interface_manager.dir/intf_mgr_enums_defs.c.o -o ../../bin/interface_manager  -Wl,-rpath,/home/pruthwin/Desktop/workspace/hobbyprojects/SmartHome/DataPlane/software/build/lib ../../lib/libutils.so -lrt -lpthread ../../lib/libutils_cpp.so ../../lib/liblogging.so 

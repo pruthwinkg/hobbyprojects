@@ -1,0 +1,24 @@
+<cli_module>
+    <app>test_comm_mgr_lib_cli</app>
+    <uid_type>static</uid_type>
+    <uid>1023</uid>
+    
+
+    <cli name="show test_comm_mgr_lib_cli uptime">
+        <cmd_type>show</cmd_type>
+        <keyword word="show">show command</keyword>
+        <keyword word="test_comm_mgr_lib_cli">test_comm_mgr_lib_cli app</keyword>
+        <keyword word="uptime">Display uptime</keyword>
+        <token>1</token>
+    </cli>
+    
+    <cli name="show test_comm_mgr_lib_cli option1">
+        <token>2</token>
+    </cli>
+
+    <cli name="show test_comm_mgr_lib_cli option2">
+        <token>3</token>
+    </cli>
+
+
+</cli_module>

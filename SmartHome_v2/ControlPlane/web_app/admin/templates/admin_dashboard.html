@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Dashboard</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+  }
+  header {
+    background-color: #007BFF;
+    color: white;
+    text-align: center;
+    padding: 10px;
+  }
+  .container {
+    display: flex;
+    height: 100vh;
+  }
+  .side-menu {
+    background-color: #333;
+    color: white;
+    width: 250px;
+    padding-top: 20px;
+  }
+  .menu-item {
+    padding: 10px;
+    text-align: center;
+    border-bottom: 1px solid #555;
+    text-decoration: none;
+    color: white;
+    display: block;
+  }
+  .menu-item:hover {
+    background-color: #555;
+  }
+  .submenu {
+    display: none;
+  }
+  .submenu.active {
+    display: block;
+  }
+  .submenu-item {
+    padding: 10px 20px;
+    display: block;
+    color: white;
+    text-decoration: none;
+  }
+  .submenu-item:hover {
+    background-color: #555;
+  }
+  .content {
+    padding: 20px;
+    flex: 1;
+  }
+  .create-profile-form {
+    padding: 20px;
+    background-color: #f2f2f2;
+    border-radius: 5px;
+    box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+    display: none;
+  }
+  .create-profile-form.active {
+    display: block;
+  }
+  .create-profile-form label {
+    font-weight: bold;
+    display: block;
+    margin-top: 10px;
+  }
+  .create-profile-form input,
+  .create-profile-form textarea {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 10px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+  }
+  .create-profile-form textarea {
+    height: 150px;
+  }
+  .create-profile-form button {
+    background-color: #007BFF;
+    color: white;
+    border: none;
+    padding: 10px;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+  .profile-list {
+    padding: 20px;
+    background-color: #f2f2f2;
+    border-radius: 5px;
+    box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+  }
+  .profile-item {
+    margin-bottom: 10px;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+  }  
+</style>
+<script>
+  function toggleSubMenu() {
+    var submenu = document.getElementById("submenu");
+    submenu.classList.toggle("active");
+  }
+
+  function showCreateProfileForm() {
+    hideCreateProfileForm(); // Hide other forms if visible
+    var createProfileForm = document.getElementById("create-profile-form");
+    createProfileForm.classList.add("active");
+  }
+
+  function hideCreateProfileForm() {
+  var createProfileForm = document.getElementById("create-profile-form");
+  if (createProfileForm) {
+    createProfileForm.classList.remove("active");
+  }
+}
+
+  // Add an event listener to hide the form when clicking other menu items or sub-menu items
+  document.addEventListener("click", function(event) {
+    var target = event.target;
+    var formContainer = document.getElementById("create-profile-form");
+    var profileListItems = document.querySelectorAll(".profile-item"); // Update this line
+    
+    if (!target.classList.contains("menu-item") && 
+        !target.classList.contains("submenu-item") &&
+        !formContainer.contains(target)) {
+      var isInsideProfileList = false;
+      for (var profileItem of profileListItems) {
+        if (profileItem.contains(target)) {
+          isInsideProfileList = true;
+          break;
+        }
+      }
+
+      if (!isInsideProfileList) {
+        hideCreateProfileForm();
+        contentDiv.innerHTML = ""; // Clear the profile list content
+      }
+    }
+});
+
+
+  function loadProfileList() {
+    var contentDiv = document.querySelector(".content");
+    contentDiv.innerHTML = "Loading..."; // Display loading message
+
+    // Make an AJAX request to the Flask backend to fetch the list of profiles
+    var xhr = new XMLHttpRequest();
+    xhr.open("GET", "/admin/list_profiles", true);
+    xhr.onreadystatechange = function () {
+      if (xhr.readyState === XMLHttpRequest.DONE) {
+        console.log("AJAX response status:", xhr.status); // Add this line
+        if (xhr.status === 200) {
+          console.log("AJAX response text:", xhr.responseText); // Add this line
+          // Update the content area with the retrieved data
+          contentDiv.innerHTML = xhr.responseText;
+        } else {
+          contentDiv.innerHTML = "Error loading profiles";
+        }
+      }
+    };
+    xhr.send();
+ }  
+</script>
+</head>
+<body>
+  <header>
+    <h1>Admin Dashboard</h1>
+  </header>
+  <div class="container">
+    <div class="side-menu">
+        <a href="javascript:void(0);" class="menu-item" onclick="toggleSubMenu()">Profile</a>
+        <div class="submenu" id="submenu">
+          <a href="#" class="submenu-item" onclick="showCreateProfileForm()">Create</a>
+          <a href="#" class="submenu-item" onclick="hideCreateProfileForm()">Delete</a>
+          <a href="#" class="submenu-item" onclick="hideCreateProfileForm()">Update</a>
+          <a href="#" class="submenu-item" onclick="loadProfileList()">List</a>
+        </div>
+        <a href="#" class="menu-item" onclick="hideCreateProfileForm()">Users</a>
+        <a href="#" class="menu-item" onclick="hideCreateProfileForm()">Devices</a>
+    </div>
+    <div class="content">
+      <div class="create-profile-form" id="create-profile-form">
+        <h2>Create Profile</h2>
+        <form method="POST" action="/admin/create_profile">
+          <label for="profile-name">Profile Name</label>
+          <input type="text" id="profile-name" name="profile-name" required>
+          <label for="profile-properties">Profile Properties</label>
+          <textarea id="profile-properties" name="profile-properties" required></textarea>
+          <button type="submit">Submit</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,9 @@
+The cmn folder implements many commonly used functonalities like
+ - logging
+ - mapi (Messenger API) (Basic building block for all communication)
+ - shared memory
+ - data structures
+ - task handlers (like event handlers/schedulers)
+
+
+ These are implemented as libraries and are used by other modules in the system. They are written to easily extend their functionalities with lot of flexibility.

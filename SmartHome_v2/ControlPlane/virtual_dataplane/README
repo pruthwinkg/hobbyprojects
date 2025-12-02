@@ -1,0 +1,75 @@
+This simulates the Dataplane layer. Read more about the section "Simualtion Mode" in the Design Document.
+
+This directory has its own Docker Compose file and works independent of the ControlPlane service deployment.
+
+This simulation layer is designed to be easily:
+    - create and manage a device type
+    - create and manage multiple device instances of a device type
+    - extend in functionality for device types
+    - add custom functionality to any device instance for any device type
+
+A simple approach is taken for this implementation, but it will support all above requirements
+    - Create a Docker container representing a device type
+    - Create multiple processes inside the container to represent device instances of that type
+    - Each processes will have it own web socket connection to the Control Plane
+    - There will be a manager process (supervisord) inside each container to handle the create/delete of processes, run clis etc
+
+
+https://docs.docker.com/config/containers/multi-service_container/
+
+
+Implementation details for the Virtal Dataplane:
+
+- It is implemented such that, it could be easily extended for Real Device Communication
+
+- A common code will be implemented to manage device-type/device instance/config associated with them
+    - virtual_device_manager: Creates/manages a new Device Manager
+    - virtual_device: Creates/manages a device
+    - config_manager: Manages the config associated with the device
+
+- Each device manager is responsbile for managing the devices created for its type
+
+- Each device will have below minimum tasks implemented via common code
+       - (self.handle_housekeeping, ()) 
+       - (self.handle_configuration, ())
+       - (self.handle_telemetry, ())
+       - (self.handle_websockets, ())
+    - Support to add custom tasks is also provided
+
+- The device properties/capabilities are defined via a Device-type specific config file
+    - Support will be provided to add Device instance specific config also
+    - Scale can also be controlled via the same config file. 
+    - User can directly modify these files anytime. The config_manager will detect the config changes and apply the new config
+    - APIs are also provided to manage the scale of the devices, which will also internally the same config file
+
+- Every device should periodically share the "Device Info" with the Device Manager
+    - Device Manager based on the "Device Info" received, can perform some device management decisions
+
+- Messaging:
+    - Each Device Manager and Devices will support a very well structured messaging
+    - Messaging is very important for :
+        - Cluster formation (Between devices of same type)
+        - Group formation (Could be between different types)
+        - Configuration Management
+        - Telemetry
+        - Internal device management (By device managers)
+
+    - Messaging will be catergorized into Internal, External, Interconnect
+        - Internal message:
+            - Between Device instances and Device Manager (For example: Between a Light instance and Light Manager)
+            - Also between Device instances themseleves.
+            - These messages are via Internal IPC mechanism
+        - External message:
+            - This is between the Virtual Dataplane and ControlPlane
+            - These messages are currently supported via web sockets
+        
+        - Interconnect: The messaging is between Device types (For example: Between Fan and Light)
+            - This is handled by the respective Device Managers
+            - For ex: If Light Instance 3 wants to send a message to Fan Instance 2, then the following sequence will happen
+                - Light instance will formward the message to Light Manager.
+                - Light Manager will process/add headers and Forward to Fan Manager.
+                - Fan Manager will process the message and extract the inner device specific message and will send to the Fan instance 2
+            - These messages are currently supported via TCP
+
+- Every Device Manager will also have a Web App running for the user to perform management actions on the Devices
+    - Several APIs will be provided to monitor/manage the entire Virtual Dataplane layer

@@ -1,0 +1,39 @@
+Key Features:
+
+Device Integration: Use embedded Linux and GPIO (General Purpose Input/Output) to interface with various smart devices such as lights, fans, and sensors.
+
+Web Application: Develop a web application using microservices architecture with React, Node.js, and Express.js. The application will allow users to control and monitor connected devices remotely.
+
+OS System Calls: Utilize OS system calls and libraries to manage low-level hardware interactions and I/O operations on the embedded Linux device.
+
+Database Management: Implement a database (e.g., MongoDB or PostgreSQL) to store user preferences, device configurations, and historical data.
+
+User Authentication and Authorization: Secure the web application with user authentication and authorization to control access to different devices and features.
+
+Real-time Communication: Use WebSockets or similar technology to enable real-time communication between the web application and the embedded system for immediate device status updates.
+
+Docker Containers: Containerize microservices using Docker to ensure easy deployment and scaling.
+
+
+
+
+How to run this project:
+
+./build.sh -s
+
+
+Profile template:
+
+profile_name : full_access_prof
+
+{
+    "access":         
+    "device_types":
+    "mode":
+    "priority":
+}
+
+access : ro, wo, rw 
+device_types : all, fan, light, [fan, sensors]
+mode: real, sim
+priority: high, mid, low

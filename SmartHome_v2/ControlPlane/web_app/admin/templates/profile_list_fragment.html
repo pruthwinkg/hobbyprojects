@@ -1,0 +1,10 @@
+<ul>
+    {% for profile in profiles %}
+      <li>
+        <strong>pid:</strong> {{ profile.pid }}<br>
+        <strong>Name:</strong> {{ profile.name }}<br>
+        <strong>Properties:</strong> {{ profile.properties }}
+      </li>
+    {% endfor %}
+  </ul>
+  

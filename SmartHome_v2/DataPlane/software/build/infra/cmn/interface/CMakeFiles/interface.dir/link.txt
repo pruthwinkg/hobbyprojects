@@ -1,0 +1,2 @@
+/usr/bin/ar qc ../../../lib/libinterface.a CMakeFiles/interface.dir/interface.c.o
+/usr/bin/ranlib ../../../lib/libinterface.a

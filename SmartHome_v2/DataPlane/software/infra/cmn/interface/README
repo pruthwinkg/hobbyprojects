@@ -1,0 +1,79 @@
+/******************************************************************************
+                                Interface library
+******************************************************************************/
+
+This is a generic implementation for providing various interfacing mechansims
+with the user applications/ infra modules.
+
+The apps which wants to participate in "interfacing" needs to use this library.
+
+"shell" user app is a command-line variant of interface. The shell app sends
+user commands to the interface library to get/execute various actions
+
+The interface library doesnt care how the apps/modules get the request for interfacing.
+It can be via Communication Manager / SCOM / other mechanisms. The interface library
+just specifies how a request for an app should be received. Depending on the request type
+it can use various interfacing mechansims to expose certain functionalities / data
+about the app to the user/other apps
+
+The library has mainly two kinds of response system. If the response type is belonging to
+FD type family, then majority of the response will be handled by the library itself. The apps
+just needs to simply write/read the application specific response/request to the interface.
+
+If the response type is Non-FD type, then the aplication itself has to take care of sending the
+response back to the requesting application via whichever means the requesting and responding apps
+have agreed upon.
+
+It is recommended to use the FD-type family for most of the requests like show commands.
+
+>>> TODO: Come up with a design where the apps can create interfaces, sub-interfaces etc and
+        simply write/read from these interfaces/sub-interfaces. The apps shouldn't bother about
+        writing to FDs. These interfaces can be like a direct line between an APP and an requesting app.
+
+Supported interfacing mechasims by this library
+ - TEXT (Command line interface)
+ - JSON (For web apps/UI)
+ - Scripting (User can write script to interface. Supported Language : Python)
+
+How to use the library:
+
+    Request Applications: (shell, or even regular apps can make use of this infra)
+        - Send a Communication Message to the destination UID with the payload in the format as INTERFACE_QUERY.
+        - Keep reading the response_loc for any response from the Interface UID.
+        - Sometimes, the interface library can send some special return codes via Communicatiion Manager messages.
+          (Usually in case of serious error condition)
+
+        Note : The response location follows some specific format. (xml format)
+
+        The requesting applications can use a python script to parse this output for easy implementation.
+        Or if the requesting application can take care of issues like stale data, synchronization, has all 
+        information regarding the dest app OR if it doesnt care about it, then it can simply search for
+        "<Response>" and "</Response>" string and simply use the in-between strings
+
+        Response output:
+
+            <Magic magic_string="Interface Library:<Request application UID>">
+            <ResponseApplication>UID</ResponseApplication>
+            <QueryType>Text/Json/Script</QueryType>
+            <QueryReqType>Token/FullQuery</QueryReqType>
+            <Query>val</Query> // Here val will be token number or the full query string
+            
+                <Response>
+                    
+                    // The responses from the responding application
+
+                </Response>
+            
+            <TimeStamp>time</TimeStamp>     // Time at which response was complete
+            </Magic>
+
+    Response Applications:
+        - First regsiter the application by calling interface_lib_init()
+        - Then in a seperate dedicated thread or any thread call interface_lib_process_query() when
+           the applications communication thread receives a query to Interface library
+        - Implement the various callbacks (INTERFACE_APP_CB) whichever the application wants to support or set it to NULL
+          Fill the responses in the buffer supplied by the interface library. If the buffer is not enough to fill the entire
+          response return the error code INTERFACE_LIB_APP_RESPONSE_PENDING.
+
+
+

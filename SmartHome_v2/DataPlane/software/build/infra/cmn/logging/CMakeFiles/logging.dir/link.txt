@@ -1,0 +1,1 @@
+/usr/bin/cc -fPIC -g -shared -Wl,-soname,liblogging.so -o ../../../lib/liblogging.so CMakeFiles/logging.dir/logging.c.o 

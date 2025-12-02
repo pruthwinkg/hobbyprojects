@@ -1,0 +1,45 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+    dpsim_light:
+        build: 
+            context: .
+            dockerfile: ./light/Dockerfile
+        container_name: smarthome-dpsim-light
+        image: smarthome-dpsim-light
+        ports:
+            - "20000:20000/tcp"
+        networks:
+            - dataplane_network
+        volumes:
+            - ./light:/code/light
+            - ./common:/code/common
+    test_controlplane:
+        build: './test_controlplane'
+        container_name: smarthome-dpsim-test_controlplane
+        image: smarthome-dpsim-test_controlplane
+        ports:
+            - "40000:40000/tcp"
+        networks:
+            - dataplane_network
+        volumes:
+            - ./test_controlplane:/code/test_controlplane
+            - ./common:/code/common           
+    dpsim_web_app:
+        build: 
+            context: .
+            dockerfile: ./web_app/Dockerfile        
+        container_name: smarthome-dpsim-web_app
+        image: smarthome-dpsim-web_app
+        ports:
+            - "7000:7000/tcp"
+        networks:
+            - dataplane_network
+        volumes:
+            - ./web_app:/code/web_app
+            - ./common:/code/common              
+volumes:
+    dataplane_volume:
+networks:
+    dataplane_network:

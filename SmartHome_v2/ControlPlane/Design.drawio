@@ -1,0 +1,115 @@
+<mxfile host="65bd71144e">
+    <diagram id="d8sSfWEPXP-dxTknHmkG" name="Page-1">
+        <mxGraphModel dx="1934" dy="862" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="2" value="Web UI&lt;br&gt;" style="whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="340" y="50" width="120" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="3" value="web_app" style="whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="340" y="160" width="120" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="4" value="DB&lt;br&gt;(Postgres)" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;" parent="1" vertex="1">
+                    <mxGeometry x="45" y="290" width="60" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="5" value="Config Manager&lt;br&gt;(config/control)" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="110" y="460" width="120" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="6" value="Telemetry Manager&lt;br&gt;(Status/Monitoring)" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="445" y="460" width="120" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="7" value="Authentication" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="605" y="460" width="120" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="8" value="" style="shape=flexArrow;endArrow=classic;startArrow=classic;html=1;" parent="1" edge="1">
+                    <mxGeometry width="100" height="100" relative="1" as="geometry">
+                        <mxPoint x="680" y="630" as="sourcePoint"/>
+                        <mxPoint x="830" y="630" as="targetPoint"/>
+                        <Array as="points"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="9" value="GRPC/REST API" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" parent="8" vertex="1" connectable="0">
+                    <mxGeometry x="-0.1733" y="-2" relative="1" as="geometry">
+                        <mxPoint x="13" y="-2" as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="10" value="FAN" style="whiteSpace=wrap;html=1;aspect=fixed;" parent="1" vertex="1">
+                    <mxGeometry x="325" y="680" width="50" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="11" value="Lights" style="whiteSpace=wrap;html=1;aspect=fixed;" parent="1" vertex="1">
+                    <mxGeometry x="425" y="680" width="50" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="12" value="Sensors" style="whiteSpace=wrap;html=1;aspect=fixed;" parent="1" vertex="1">
+                    <mxGeometry x="525" y="680" width="50" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="15" value="" style="endArrow=none;html=1;" parent="1" edge="1">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="-15" y="850" as="sourcePoint"/>
+                        <mxPoint x="905" y="850" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="16" value="FAN" style="whiteSpace=wrap;html=1;aspect=fixed;" parent="1" vertex="1">
+                    <mxGeometry x="255" y="990" width="50" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="19" value="Light1" style="whiteSpace=wrap;html=1;aspect=fixed;" parent="1" vertex="1">
+                    <mxGeometry x="355" y="990" width="50" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="20" value="Light2" style="whiteSpace=wrap;html=1;aspect=fixed;" parent="1" vertex="1">
+                    <mxGeometry x="445" y="990" width="50" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="21" value="Sensor1" style="whiteSpace=wrap;html=1;aspect=fixed;" parent="1" vertex="1">
+                    <mxGeometry x="525" y="990" width="50" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="22" value="Sensor2" style="whiteSpace=wrap;html=1;aspect=fixed;" parent="1" vertex="1">
+                    <mxGeometry x="605" y="990" width="50" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="23" value="Web socket" style="shape=flexArrow;endArrow=classic;startArrow=classic;html=1;" parent="1" edge="1">
+                    <mxGeometry width="100" height="100" relative="1" as="geometry">
+                        <mxPoint x="465" y="940" as="sourcePoint"/>
+                        <mxPoint x="465" y="870" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="24" value="Real Devices" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" parent="1" vertex="1">
+                    <mxGeometry x="105" y="990" width="90" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="25" value="Control plane&lt;br&gt;(Could be deployed on cloud/a local server)" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" parent="1" vertex="1">
+                    <mxGeometry x="-45" y="795" width="250" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="26" value="Dataplane" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" parent="1" vertex="1">
+                    <mxGeometry x="45" y="870" width="80" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="27" value="Virtual Device Managers" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" parent="1" vertex="1">
+                    <mxGeometry x="160" y="685" width="150" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="28" value="NGINX" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="340" y="830" width="260" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="29" value="Device Manager&lt;br&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="380" y="560" width="120" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="30" value="Centralized Web App&amp;nbsp;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" parent="1" vertex="1">
+                    <mxGeometry x="185" y="65" width="140" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="31" value="GRPC" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" parent="1" vertex="1">
+                    <mxGeometry x="415" y="640" width="60" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="32" value="REST APIs" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" parent="1" vertex="1">
+                    <mxGeometry x="625" y="520" width="80" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="33" value="REST APIs" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" parent="1" vertex="1">
+                    <mxGeometry x="390" y="410" width="80" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="34" value="Context Manager" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="400" y="760" width="120" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="36" value="REST APIs" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" parent="1" vertex="1">
+                    <mxGeometry x="130" y="530" width="80" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="37" value="License and Billing Manager" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="285" y="460" width="120" height="60" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>

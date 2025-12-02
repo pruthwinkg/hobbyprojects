@@ -1,0 +1,44 @@
+/******************************************************************************/
+                                     README
+/******************************************************************************/
+
+Application Name : shell
+
+Functionality:
+    The shell application is UI for the whole system. The shell is capable of taking
+    various commands from the user, process it and pass it to the appropriate modules
+    in the system.
+
+    Shell broadly does the below functions:
+    - show commands
+    - configure commands
+    - debug commands
+
+    All the user commands follow the below syntax:
+
+    <SHELL_APP_USER_CMD_TYPE> <app-name> <optional param1> <optional param2> <optional param3>
+
+    The shell program doesn't validate anything beyond <app-name>. The apps have to do that.
+
+Notes:
+    It is implmented to handle both the infra modules and as well user apps. Also, it
+    provides extensions/APIs to integrate to an actual UI. It makes use of Communication
+    Manager Service to pass user-commands to various apps.
+
+    The shell application also has a library part which the participating components integrates.
+    Since the shell application uses the Communication Manager Service, the applications should
+    have the Communication Library Client up and running. The responses from the applications for the
+    requests sent by the shell program will be served by the application itself using the shell library
+
+    If the output has to be seen in shell window then enable "shell-redirection". 
+
+    shell-redirection: This feature will redirect the output from apps to the shell program.
+
+
+Adding a new CLI:
+    - Create a new .xml file for the app
+    - Add the CLI definetion in the file according to the format specified
+    - The cli_parser program will auto-generate code. This will be invoked from ./build.sh tool chain
+    - The cli_parser program will auto-generate the code inside the cli directory during compilation and 
+        once the binary is generated it will delete it.
+

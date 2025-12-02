@@ -1,0 +1,2 @@
+/usr/bin/ar qc ../../../lib/libcomm_mgr.a CMakeFiles/comm_mgr.dir/comm_mgr_lib.c.o CMakeFiles/comm_mgr.dir/comm_mgr_lib_enums_defs.c.o ../CMakeFiles/comm_mgr_cmn.dir/comm_mgr_cmn.c.o ../CMakeFiles/comm_mgr_cmn.dir/comm_mgr_cmn_enums_defs.c.o
+/usr/bin/ranlib ../../../lib/libcomm_mgr.a

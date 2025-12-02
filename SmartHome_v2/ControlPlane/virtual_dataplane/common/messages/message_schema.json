@@ -1,0 +1,99 @@
+[
+  {
+      "description": "Original Schema",
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+          "application": {"type": "string"},
+          "version": {"type": "string"},
+          "device": {"type": "string"},
+          "uuid": {"type": "string"},
+          "type": {"type": "string", "enum": ["config", "general"]},
+          "config": {"type": "string"},
+          "general": {"type": "string"},        
+          "priority": {"type": "string"},
+          "payload": {"type": ["object", "string", "null"]}
+      },
+      "required": ["application", "version", "device", "uuid", "type", "priority"],
+      "anyOf": [
+          {
+            "properties": {"type": {"const": "config"}}
+          },
+          {
+            "properties": {"type": {"const": "general"}}
+          }
+      ]
+  },
+  {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "application": { "type": "string" },
+      "version": { "type": "string" },
+      "type": {
+        "type": "string",
+        "enum": ["external", "internal", "interconnect"]
+      },
+      "priority": {
+        "type": "string",
+        "enum": ["low", "mid", "high"]
+      },
+      "target": {
+        "type": "string",
+        "enum": ["device", "service"]
+      },
+      "payload": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "type": "string",
+            "enum": ["unicast", "broadcast", "multicast"]
+          },
+          "subtype": {
+            "type": "string",
+            "enum": ["config", "telemetry", "system"]
+          },
+          "source": {
+            "type": "object",
+            "properties": {
+              "origin": { "type": "string" },
+              "uuid": { "type": "string" }
+            },
+            "required": ["origin", "uuid"]
+          },
+          "destination": {
+            "type": "object",
+            "properties": {
+              "device": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "service": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "uuid": {
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            },
+            "required": ["uuid"],
+            "additionalProperties": false
+          },
+          "message": {
+            "type": "object",
+            "properties": {
+              "ack": { "type": "string" },
+              "liveliness": { "type": "string" },
+              "config": { "type": "string" },
+              "target": { "type": "string" },
+              "duration": { "type": "integer" }
+            }
+          }
+        },
+        "required": ["scope", "subtype", "source", "destination"]
+      }
+    },
+    "required": ["application", "version", "type", "priority", "target", "payload"]       
+  }
+]

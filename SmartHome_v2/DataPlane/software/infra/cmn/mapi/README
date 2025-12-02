@@ -1,0 +1,127 @@
+Messenger API - MAPI
+
+This library defines a set of simple APIs for inter and intra process communication.
+The main objective of this library is to simply the communication between processes without the applications
+worrying about forming sockets, using uds/udp for local/external communication etc.
+
+The other modules such as Communication Manager, Interface Manager could use the MAPI as the base Communication
+mechanism before building another Communication layer on top of this.
+
+Notes:
+    - This library needs to run in a seperate thread
+    - It identifies the apps/infra modules using the UID (static or dynamic) only
+    - For internal communication it uses Unix Domain Sockets by default. But it could be changed via API
+    - For external communication it uses TCP/UDP.
+    - This library can support creation of multiple MAPI IDs per app. In this case create one thread per MAPI ID
+    - The library supports two modes - STREAM or DGRAM for both internal and external communication
+    - The DGRAM mode is very easy to use by the application, with few APIs to be invoked.
+    - The STREAM mode is bit complex with lot of options to configure.
+
+
+
+mapi (MID = MapiID, sub_mid = Each MID can have multiple sub_mids(channels))
+- MIDs are end points of an UID for comms purpose
+- stream / dgram mode + internal / external comms
+- For internal always UDS, and for external Sockets
+- each UID can create any number of MIDs (Soft limit at 32 MIDS)
+- each MID can have multiple sub_mids(channels)
+- By default each MID has 1 sub_mid
+- Max of 16 sub_mids are allowed per MID
+
+mapi_init
+mapi_create_mid
+mapi_start
+
+- In dgram, (No implicit connection), exterme flexibility, fast
+    - any MID can talk to any other MID (even within UID!! as well)
+    - any sub-mid can talk to any other sub-mid (even within the same MID!!)
+
+- In stream, (implicit connection), high reliability
+    - using start_stream, a dedicated stream is created between src_mid/src_sub_mid to dst_mid/dst_sub_mid
+    - packets will be dropped if app tries to send any other destination pair
+
+mapi_send(src_mid, src_sub_mid, dst_info, data); => Based on dst_info, library decides how to send
+
+- dst_info:
+    - dst_ip : 0 - local, else - external
+    - dst_port : in local - ignored, external - used (an UID can have multiple listen ports)
+    - dst_mid : One MID can map to multiple unique ports => All traffic coming to some set of ports will hit this MID
+    - dst_sub_mid : One MID can have multiple sub-mids.
+    - dst_uid : Unique for an app (how about for distributed apps ?) Send in header. Used for dropping packets at dest
+- src_mid : From which MID to send the data
+- src_sub_mid : If -1, uses default sub_mid, else uses the passed sub_mid in header
+ 
+ 
+ -------------------------------------
+    All user apps && most Infra apps
+ -------------------------------------
+     Comms Manager  | Some Infra Apps
+ --------------------------------------
+     MAPI (Exposes mids / sub-mids)
+ --------------------------------------
+        TCP / IP
+ --------------------------------------
+ UDS (Internal) | Sockets (External)
+---------------------------------------
+
+Advanced features of MAPI:
+----------  ------------      -----------       --------------------------
+UDS/TCP/IP |Basic Mapi | ==> | Adv. Mapi | ==> | Comms / Upper apps layer |
+--------    ------------      -----------       --------------------------
+
+MAPI is like a pipeline. It has two stages.
+- Basic stage: Where it Rx/Tx the packets based on the User Info provided.
+- Adv. stage : Where it applies the user provided rules. This stage can be bypassed completely
+- Implementation wise, it will happen in the mapi_rcv_cb before calling the user_rcv_cb
+- This stage can run in a seperate thread/task or in the same context as communicator thread.
+- If run as a seperate task, then it requires a small queue between 1st and 2nd stage.
+- It consumes more resource (memory), but it is faster
+- If run in the same context as communicator, then no extra memory required. Simply processes the
+ packet as per rules
+
+- These advanced features could be changed dynamically by the apps as needed
+   
+- Can be turned ON/OFF
+- By default OFF. Turning ON consumes more memory, but provides lot of additional features
+
+- Support to STOP / RE-START traffic in the receiving MID at anytime
+- Basically in the mapi call back, it simply drops
+
+- Support for source port filtering
+- Support for source ip filtering
+- Support for source UID based filtering
+- Support for source MID based filtering
+- Support for source sub-mid based filtering (? Stream implictly does this. Support for Dgram ?)
+- Support for Custom rule based filtering - But simple rules
+
+- Support for Rate limiting (At what layer ? mapi or below ?)
+
+- QOS (Quality of Service)
+
+- Simple credential/secret token based authentication
+
+- Stats/Telemetry to support debugging
+    - Natively supports export of these telemetry to any remote server
+- Packet capturing based on user provided filters
+    - Filters supported : uid, ip, port, mid, sub-mid, msgCode
+    - Send these packet captures to any remote server
+
+comms-manager-v2
+- should be built purely on top mapi
+- all comms to this service should be via udp (non streaming)
+- should have very simple protocol for basic reliability.
+- acks/nacks must be explicitly requested by clients
+- optional retransmission (explicitly requested)
+- almost acts like a service discovery + forwarding
+- services should advertise their uids to this service
+- most of the cases (all user apps must, no exceptions), all traffic should flow through this service
+- only system/infra level apps will have optional mechanism for direct comms with the help of this service
+- only system/infra level apps can use stream mode if required (directly between the clients) with the help of this service
+- automatic mapping of uid to port numbers should be handled by this service
+- All services just use purely uids
+- should have below minimum functionalities
+- unicast, multicast, broadcast
+- service discovery
+- priority based forwarding
+- telemetry (stats) for traffic through it
+- security/scrunity/snooping/traffic-capture-to-external-server for traffic through it

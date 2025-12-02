@@ -1,0 +1,11 @@
+This folder is used soley for the purpose of using already available data structres in C++ STL,
+to be used in the utils library, thereby not re-inventing the wheel. This directory could even be 
+extended for other functionalities of the utils library
+
+It is not recommended for the applications or infra modules to call the functions in this library directly. 
+Instead they can call the functions defined in utils library and set the library mode to CPP or Mixed. 
+A thin wrapper is added in the utils library to make use of the C++ STL library without the callers knowing about it,
+so that a unique interface could be used throughout the project for managing the data strucutres
+
+The calling applications or modules can use the utils internal implemenatation or C++ STL during the 
+utils library init by setting the utils library mode appropriately.

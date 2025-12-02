@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+message InnerPayload {
+    string config = 1;
+    string target = 2;
+    int32 duration = 3;
+}
+
+message Payload {
+    string origin = 1;
+    string device = 2;
+    string service = 3;
+    string uuid = 4;
+    string subtype = 5;    
+    string ack = 6;
+    string liveliness = 7;
+    InnerPayload innerpayload = 8;
+}
+
+message Message {
+    string application = 1;
+    string version = 2;
+    string type = 3;
+    string priority = 4;
+    string target = 5;
+    Payload payload = 6;
+}

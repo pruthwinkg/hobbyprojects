@@ -1,0 +1,1 @@
+/usr/bin/cc -g -rdynamic CMakeFiles/test_mapi_1.dir/mapi_test_app.c.o -o ../../../../bin/test_mapi_1  -Wl,-rpath,/home/pruthwin/Desktop/workspace/hobbyprojects/SmartHome/DataPlane/software/build/lib ../../../../lib/libmapi.so -lpthread ../../../../lib/libutils.so -lrt -lpthread ../../../../lib/libutils_cpp.so ../../../../lib/liblogging.so 

@@ -1,0 +1,589 @@
+{
+	"info": {
+		"_postman_id": "0c49fa56-ce39-4f65-ae40-a35e073dade0",
+		"name": "SmartHome",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "25902812"
+	},
+	"item": [
+		{
+			"name": "web_app",
+			"item": [
+				{
+					"name": "profiles",
+					"item": [
+						{
+							"name": "list_profiles",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "http://localhost:{{WEBAPP}}/admin/list_profiles",
+									"protocol": "http",
+									"host": [
+										"localhost"
+									],
+									"port": "{{WEBAPP}}",
+									"path": [
+										"admin",
+										"list_profiles"
+									],
+									"query": [
+										{
+											"key": "profile-id",
+											"value": "27",
+											"disabled": true
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "create_profile",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"profile-properties\": {\n        \"access\": \"rw\",\n        \"device_types\": \"all\",\n        \"mode\": \"real\",\n        \"priority\": \"high\"\n    }\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "http://localhost:{{WEBAPP}}/admin/create_profile?profile-name=hello1",
+									"protocol": "http",
+									"host": [
+										"localhost"
+									],
+									"port": "{{WEBAPP}}",
+									"path": [
+										"admin",
+										"create_profile"
+									],
+									"query": [
+										{
+											"key": "profile-name",
+											"value": "hello1"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "delete_profiles",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "formdata",
+									"formdata": []
+								},
+								"url": {
+									"raw": "http://localhost:{{WEBAPP}}/admin/delete_profiles?profile-id=26",
+									"protocol": "http",
+									"host": [
+										"localhost"
+									],
+									"port": "{{WEBAPP}}",
+									"path": [
+										"admin",
+										"delete_profiles"
+									],
+									"query": [
+										{
+											"key": "profile-id",
+											"value": "26"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "update_profile",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"profile-properties\": {\n        \"access\": \"ro\",\n        \"device_types\": \"all\",\n        \"mode\": \"real\",\n        \"priority\": \"low\"\n    }\n}"
+								},
+								"url": {
+									"raw": "http://localhost:{{WEBAPP}}/admin/update_profiles?profile-id=27",
+									"protocol": "http",
+									"host": [
+										"localhost"
+									],
+									"port": "{{WEBAPP}}",
+									"path": [
+										"admin",
+										"update_profiles"
+									],
+									"query": [
+										{
+											"key": "",
+											"value": "",
+											"disabled": true
+										},
+										{
+											"key": "profile-id",
+											"value": "27"
+										}
+									]
+								}
+							},
+							"response": []
+						}
+					],
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									""
+								]
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									""
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "users",
+					"item": [
+						{
+							"name": "list_users",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "http://localhost:{{WEBAPP}}/admin/list_users",
+									"protocol": "http",
+									"host": [
+										"localhost"
+									],
+									"port": "{{WEBAPP}}",
+									"path": [
+										"admin",
+										"list_users"
+									],
+									"query": [
+										{
+											"key": "user-id",
+											"value": "27",
+											"disabled": true
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "create_user",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "http://localhost:{{WEBAPP}}/admin/create_user?user-name=user2",
+									"protocol": "http",
+									"host": [
+										"localhost"
+									],
+									"port": "{{WEBAPP}}",
+									"path": [
+										"admin",
+										"create_user"
+									],
+									"query": [
+										{
+											"key": "user-name",
+											"value": "user2"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "delete_users",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "formdata",
+									"formdata": []
+								},
+								"url": {
+									"raw": "http://localhost:{{WEBAPP}}/admin/delete_users?user-id=2",
+									"protocol": "http",
+									"host": [
+										"localhost"
+									],
+									"port": "{{WEBAPP}}",
+									"path": [
+										"admin",
+										"delete_users"
+									],
+									"query": [
+										{
+											"key": "user-id",
+											"value": "2"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "update_user",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": ""
+								},
+								"url": {
+									"raw": "http://localhost:{{WEBAPP}}/admin/update_users?user-id=3&profile-id=27",
+									"protocol": "http",
+									"host": [
+										"localhost"
+									],
+									"port": "{{WEBAPP}}",
+									"path": [
+										"admin",
+										"update_users"
+									],
+									"query": [
+										{
+											"key": "user-id",
+											"value": "3"
+										},
+										{
+											"key": "profile-id",
+											"value": "27"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "admin_login",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "formdata",
+									"formdata": [
+										{
+											"key": "username",
+											"value": "admin",
+											"type": "text"
+										},
+										{
+											"key": "password",
+											"value": "adminpass",
+											"type": "text"
+										}
+									]
+								},
+								"url": {
+									"raw": "http://localhost:{{WEBAPP}}/admin/login",
+									"protocol": "http",
+									"host": [
+										"localhost"
+									],
+									"port": "{{WEBAPP}}",
+									"path": [
+										"admin",
+										"login"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "user_login",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "formdata",
+									"formdata": [
+										{
+											"key": "username",
+											"value": "user1",
+											"type": "text"
+										},
+										{
+											"key": "password",
+											"value": "qtuxuN93Ow",
+											"type": "text"
+										}
+									]
+								},
+								"url": {
+									"raw": "http://localhost:{{WEBAPP}}/login",
+									"protocol": "http",
+									"host": [
+										"localhost"
+									],
+									"port": "{{WEBAPP}}",
+									"path": [
+										"login"
+									]
+								}
+							},
+							"response": []
+						}
+					],
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									""
+								]
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									""
+								]
+							}
+						}
+					]
+				}
+			],
+			"auth": {
+				"type": "bearer",
+				"bearer": [
+					{
+						"key": "token",
+						"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmcmVzaCI6ZmFsc2UsImlhdCI6MTY5MzIwMzA1MSwianRpIjoiOWY0OWM2ODktMTJmMS00OTQ2LTkxMjUtZWZkMmIzNWU3ZWJkIiwidHlwZSI6ImFjY2VzcyIsInN1YiI6ImFkbWluIiwibmJmIjoxNjkzMjAzMDUxLCJleHAiOjE2OTMyMDM5NTF9.B7MVNWeo8f6FWF1teIF1h_qqC1rOIBHju0aXSX-ga88",
+						"type": "string"
+					}
+				]
+			},
+			"event": [
+				{
+					"listen": "prerequest",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							""
+						]
+					}
+				},
+				{
+					"listen": "test",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							""
+						]
+					}
+				}
+			]
+		},
+		{
+			"name": "infra",
+			"item": [
+				{
+					"name": "database",
+					"item": [
+						{
+							"name": "list_tables",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "http://localhost:{{INFRA}}/infra/debug/list_tables",
+									"protocol": "http",
+									"host": [
+										"localhost"
+									],
+									"port": "{{INFRA}}",
+									"path": [
+										"infra",
+										"debug",
+										"list_tables"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "drop_table",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"url": {
+									"raw": "http://localhost:{{INFRA}}/infra/debug/drop_table?table-name=users",
+									"protocol": "http",
+									"host": [
+										"localhost"
+									],
+									"port": "{{INFRA}}",
+									"path": [
+										"infra",
+										"debug",
+										"drop_table"
+									],
+									"query": [
+										{
+											"key": "table-name",
+											"value": "users"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "recreate_tables",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"url": {
+									"raw": "http://localhost:{{INFRA}}/infra/debug/recreate_tables?table-name=users",
+									"protocol": "http",
+									"host": [
+										"localhost"
+									],
+									"port": "{{INFRA}}",
+									"path": [
+										"infra",
+										"debug",
+										"recreate_tables"
+									],
+									"query": [
+										{
+											"key": "table-name",
+											"value": "users"
+										}
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				}
+			],
+			"auth": {
+				"type": "noauth"
+			},
+			"event": [
+				{
+					"listen": "prerequest",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							""
+						]
+					}
+				},
+				{
+					"listen": "test",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							""
+						]
+					}
+				}
+			]
+		}
+	],
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmcmVzaCI6ZmFsc2UsImlhdCI6MTY5MzAzNDYzNiwianRpIjoiZTBmOTE0NGQtN2QxZS00OWM5LTg2ZDgtNTliMTY2YWYzNjc0IiwidHlwZSI6ImFjY2VzcyIsInN1YiI6ImFkbWluIiwibmJmIjoxNjkzMDM0NjM2LCJleHAiOjE2OTMwMzU1MzZ9.0UlsoqPBtrya-1PZBF88ZLbv56ZT5_Yof9IwrbkdsYA",
+				"type": "string"
+			}
+		]
+	},
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "WEBAPP",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "AUTHENTICATION",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "TOKEN",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "INFRA",
+			"value": "",
+			"type": "string"
+		}
+	]
+}

@@ -1,0 +1,7 @@
+- Pausing the web_app home module development till the Database Infra is up.
+- Have stopped at a point where the Profile Name and Properties are coming to the Flash end point
+- Need to validate these properties and store in DB
+
+
+"infra" is a new service which manages database and any other future infra
+ - db_init() is done by this service

@@ -1,0 +1,68 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+    postgres:
+        image: postgres
+        container_name: smarthome-postgres
+        environment:
+            POSTGRES_USER: postgres
+            POSTGRES_PASSWORD: postgres
+            POSTGRES_DB: smarthome-db
+        ports:
+            - "5432:5432"
+        networks:
+            - smarthome_network            
+        volumes:
+            - smarthome_volume:/var/lib/postgresql/data
+    infra:
+        build: './infra'
+        container_name: smarthome-infra
+        image: smarthome-cp-infra
+        ports:
+            - "9001:9001/tcp"
+        networks:
+            - smarthome_network
+        volumes:
+            - ./infra:/code/infra
+            - ./common:/code/common
+        depends_on:
+            - postgres    
+    web_app:
+        build: './web_app'
+        container_name: smarthome-web_app
+        image: smarthome-cp-web_app
+        ports:
+            - "9002:9002/tcp"
+        networks:
+            - smarthome_network
+        volumes:
+            - ./web_app:/code/web_app
+            - ./common:/code/common
+            - "/etc/timezone:/etc/timezone:ro"
+            - "/etc/localtime:/etc/localtime:ro"
+        depends_on:
+            - postgres
+            - infra                
+    authentication:
+        build: './authentication'
+        container_name: smarthome-authentication
+        image: smarthome-cp-authentication
+        environment:
+            JWT_SECRET_KEY: 'auth_secret_key'
+            JWT_EXPIRATION_TIME: 7200 # 2 hour
+        #ports: #(Do not expose. All APIs are internal)
+        #    - "9003:9003/tcp"
+        networks:
+            - smarthome_network
+        volumes:
+            - ./authentication:/code/authentication
+            - ./common:/code/common
+        depends_on:
+            - postgres 
+            - infra                    
+
+volumes:
+    smarthome_volume:
+networks:
+    smarthome_network:
