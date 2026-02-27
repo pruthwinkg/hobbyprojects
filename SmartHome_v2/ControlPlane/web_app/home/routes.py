@@ -12,9 +12,12 @@ home_bp = Blueprint('home_bp', __name__,
 def user_login():
     username = request.form['username']
     password = request.form['password']
-    if username is not 'admin':
-        url = f"{AUTHENTICATION_URL}{AUTHENTICATION_EP_USER_LOGIN}"
-        response = requests.post(url, json={"username": username, "password":password})
+
+    if username == 'admin':
+        return jsonify({"error": "Admin login is not allowed here."}), 403
+
+    url = f"{AUTHENTICATION_URL}{AUTHENTICATION_EP_USER_LOGIN}"
+    response = requests.post(url, json={"username": username, "password":password})
 
     if response.status_code == 200:
         data = response.json()
